@@ -8,14 +8,17 @@ import { curriculumDataService } from './curriculumDataService';
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(API_KEY!);
 
-interface CheckRequest {
+export type CheckContentMode = "seo" | "note";
+
+export interface CheckRequest {
   article: string;
   outline: string;
   keyword: string;
   competitorInfo?: any;
+  contentMode?: CheckContentMode;
 }
 
-interface CheckResult {
+export interface CheckResult {
   overallScore: number;
   scores: {
     seo: number;
@@ -112,6 +115,33 @@ const CHECK_CRITERIA = `
 - 本文（<p>タグ内など）での<strong>タグ使用は問題なし（むしろ推奨）
 `;
 
+const CHECK_CRITERIA_NOTE = `
+【最重要チェック項目】🔴（note／ナラティブ）
+1. 固有名詞・数値・日付の正確性 — Web と照合
+2. 虚偽の統計や存在しないサービス説明になっていないか
+
+【ペルソナ整合】🟠
+3. 【KEN ペルソナ】が入力に無い場合は一般的な独白の自然さのみ評価。ある場合は人称・語彙・禁則違反を major 級で指摘
+4. 「社内向けのみ」とされた情報や未公開実名が混入していれば critical
+
+【評価しない（指摘しない）】🟢
+- 検索キーワード密度・共起語
+- メタディスクリプション・OG
+- SERP 狙いで H2 をクエリ調整すること
+- サイト内リンクの個数・アンカーキーワード
+
+【読みやすさ／ナラティブ】
+5. リードがフックとして機能しているか、「本記事では〜説明」のメタ説明になっていないか
+6. 段落長・話題転換・接続の自然さ
+7. AI っぽい同型文末の連打がないか
+
+【価値】
+8. 読者への具体性・自分ごと化できる示唆があるか（ただし SEO 順位とは無関係）
+
+【SEO スコア欄について】🔵
+出力 JSON の scores.seo は「読者適合／物語としての軸の一貫性」を 100 点換算で入れる（検索評価ではない）。
+`;
+
 export async function checkArticleV3(request: CheckRequest): Promise<CheckResult> {
   console.log('🔍 ライティングチェックV3 開始');
   
@@ -125,38 +155,71 @@ export async function checkArticleV3(request: CheckRequest): Promise<CheckResult
       }
     });
 
-    const prompt = `
-あなたはSEOとコンテンツマーケティングの専門家です。
-以下の記事を厳密に評価し、改善提案を行ってください。
+    const mode: CheckContentMode = request.contentMode ?? "seo";
+    const criteria = mode === "note" ? CHECK_CRITERIA_NOTE : CHECK_CRITERIA;
+    const roleIntro =
+      mode === "note"
+        ? "あなたはエッセイ／note校正の編集ディレクターです。"
+        : "あなたはSEOとコンテンツマーケティングの専門家です。";
 
-${CHECK_CRITERIA}
+    const competitorBlock =
+      mode === "note"
+        ? ""
+        : `\n【競合・頻出語の目安】※あればのみ\n${
+            request.competitorInfo ? JSON.stringify(request.competitorInfo).slice(0, 2500) : "（無し／note 経路では未使用でもよい）"
+          }`;
 
-【評価対象記事】
-${request.article.slice(0, 30000)} // 最初の30000文字
-
-【元の構成案（執筆メモ含む）】
-${request.outline}
-
-【ターゲットキーワード】
-${request.keyword}
-
-【執筆メモ準拠度の確認指示】
+    const memoConformance =
+      mode === "note"
+        ? `【構成メモとの対応確認】
+- メモにあるエピソード・論点が「並べ」の解説だけで終わっていないか
+- メモの論点カバーの不足があればどれかだけを列挙（8割達成などのKW密度型の語りはしない）`
+        : `【執筆メモ準拠度の確認指示】
 構成案に含まれる「執筆メモ」（writingNote）を確認し、以下を評価してください：
 - 各H2・H3の執筆メモで指定された要点が記事に含まれているか
 - 特に重要な数値、事例、具体的な内容が反映されているか
 - 執筆メモの要素が8割以上記事に反映されているか確認
-- もし重要な要素が欠けている場合は、具体的に何が足りないか指摘
+- もし重要な要素が欠けている場合は、具体的に何が足りないか指摘`;
+
+    const improvementsHint =
+      mode === "note"
+        ? `- フックの強化／語り口／段落分割の具体提案（SEO CTA は不要）`
+        : `- SEO向け内部的改善（CTA は SEO 運用がある場合のみ）`;
+
+    const seoScoreMeaning =
+      mode === "note"
+        ? "読者適合・視点の一貫（検索最適ではない）"
+        : "検索親和と構成・テーマ整合";
+
+    const prompt = `
+${roleIntro}
+以下の記事を厳密に評価し、改善提案を行ってください。
+
+${criteria}
+
+【評価対象記事】
+${request.article.slice(0, 30000)} // 最初の30000文字
+
+【元の構成案】
+${request.outline}
+
+【ターゲットキーワード／テーマ】
+${request.keyword}
+${competitorBlock}
+
+${memoConformance}
 
 【評価タスク】
 1. 各項目を100点満点で採点
-2. 重大な問題点を3つまで指摘（特に段落が長すぎる箇所を優先的に指摘）
-3. 改善提案を5つまで提示（以下を必ず含める）：
-   - 200字を超える段落があれば、具体的な分割位置を提案
-   - 箇条書きにすべき箇所があれば、具体的な変換例を提示
-   - 話題転換での段落分けが必要な箇所を指摘
-4. 書き直しが必要な箇所を3つまで特定
+2. 重大な問題点を3つまで指摘
+3. 改善提案を最大5つ:
+   ${improvementsHint}
+   - 200字超の段落がある場合は分割の具体的提案を含めること
+4. 書き直し候補を最大3つ
 
-【JSON形式で出力】
+【出力】有効な JSON のみ。
+scores.seo の意味:「${seoScoreMeaning}」
+
 {
   "overallScore": 85,
   "scores": {
@@ -169,26 +232,28 @@ ${request.keyword}
   "issues": [
     {
       "severity": "major",
-      "category": "サービス訴求",
-      "description": "サービスの強みが十分に訴求されていない",
-      "location": "リード文"
+      "category": "例",
+      "description": "",
+      "location": ""
     }
   ],
   "improvements": [
     {
       "priority": "high",
-      "suggestion": "2箇所のCTA必須配置を確認（リード文末、記事文末）",
-      "expectedImpact": "コンバージョン率15%向上"
+      "suggestion": "",
+      "expectedImpact": ""
     }
   ],
   "rewriteSuggestions": [
     {
-      "original": "サービスを検討することができます。",
-      "suggested": "実践型の研修サービスなら、助成金を活用しながら即戦力人材を育成できます。",
-      "reason": "冗長表現の削除とサービスの価値訴求"
+      "original": "",
+      "suggested": "",
+      "reason": ""
     }
   ]
 }
+
+配列には実際の評価内容を記入すること（空オブジェクトのみのまま出力しない）。
 `;
 
     const result = await model.generateContent(prompt);
@@ -247,6 +312,7 @@ ${competitorArticles.map((a, i) => `競合${i + 1}: ${a.slice(0, 1000)}`).join('
 `;
 
   console.log('🔄 競合分析中...');
+  const startTime = Date.now();
   const result = await model.generateContent(prompt);
   const text = result.response.text();
   
@@ -442,24 +508,26 @@ ${testArticle.slice(0, test.articleLength)}
           time: elapsed,
           score: parsed.overallScore
         });
-      } catch (parseError) {
-        console.log(`   ❌ JSONパースエラー: ${parseError.message}`);
+      } catch (parseError: unknown) {
+        const pe = parseError instanceof Error ? parseError : new Error(String(parseError));
+        console.log(`   ❌ JSONパースエラー: ${pe.message}`);
         console.log(`   レスポンス冒頭: ${response.slice(0, 100)}...`);
         results.push({
           test: test.name,
           success: false,
           responseLength: response.length,
           time: elapsed,
-          error: parseError.message
+          error: pe.message
         });
       }
 
-    } catch (error) {
-      console.log(`   ❌ API呼び出しエラー: ${error.message}`);
+    } catch (error: unknown) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.log(`   ❌ API呼び出しエラー: ${err.message}`);
       results.push({
         test: test.name,
         success: false,
-        error: error.message
+        error: err.message
       });
     }
 

@@ -405,11 +405,14 @@ export const testOutlinesV2 = {
   }
 };
 
-export function getTestOutlineV2(type: 'whatIs' | 'howTo' | 'comprehensive' | 'businessEfficiency') {
-  if (type === 'businessEfficiency') {
+export function getTestOutlineV2(
+  type: "whatIs" | "howTo" | "comprehensive" | "businessEfficiency" | "aiTraining"
+) {
+  const normalized = type === "aiTraining" ? "businessEfficiency" : type;
+  if (normalized === "businessEfficiency") {
     return getBusinessEfficiencyTestOutline();
   }
-  return testOutlinesV2[type];
+  return testOutlinesV2[normalized];
 }
 
 // 業務効率化のテスト構成を生成
@@ -421,8 +424,10 @@ function getBusinessEfficiencyTestOutline() {
       metaDescription: "業務効率化の具体的な方法を7つ厳選して解説。ツール導入から業務フロー改善まで、中小企業でも実践できる施策と成功事例を紹介します。",
       targetAudience: "業務効率化を検討している中小企業の経営者・管理職で、具体的な方法がわからず悩んでいる方",
       introductions: {
-        empathy: "「業務効率化に取り組みたいけど、何から始めればいいかわからない…」そんな悩みを抱えていませんか？本記事では、業務効率化の具体的な方法を7つ厳選し、実際の成功事例とともにわかりやすく解説します。",
-        curiosity: "業務効率化に成功した企業は、どのような施策を実施しているのでしょうか？本記事では、実際に成果を出している企業の事例をもとに、すぐに実践できる方法を徹底解説します。"
+        conclusionFirst:
+          "業務効率化は、限られたリソースで成果を最大化するうえでの必須スキルです。",
+        empathy:
+          "「業務効率化に取り組みたいけど、何から始めればいいかわからない…」そんな悩みを抱えていませんか？本記事では、業務効率化の具体的な方法を7つ厳選し、実際の成功事例とともにわかりやすく解説します。",
       },
       outline: [
         {

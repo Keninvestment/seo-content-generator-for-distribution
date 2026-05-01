@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import type { SeoOutline, GroundingChunk } from "../types";
 
 const apiKey =
@@ -13,43 +13,43 @@ if (apiKey.includes("PLACEHOLDER") || apiKey.length < 30) {
 }
 
 console.log("✅ API key loaded successfully");
-const ai = new GoogleGenAI({ apiKey });
+const genAI = new GoogleGenerativeAI(apiKey);
 
 const responseSchema = {
-  type: Type.OBJECT,
+  type: SchemaType.OBJECT,
   properties: {
     title: {
-      type: Type.STRING,
+      type: SchemaType.STRING,
       description: "記事のキャッチーなタイトル案",
     },
     targetAudience: {
-      type: Type.STRING,
+      type: SchemaType.STRING,
       description: "この記事がターゲットとする読者層の説明",
     },
     introduction: {
-      type: Type.STRING,
+      type: SchemaType.STRING,
       description: "読者の興味を引き、記事を読み進めてもらうための導入部の要約",
     },
     outline: {
-      type: Type.ARRAY,
+      type: SchemaType.ARRAY,
       description:
         "記事の主要なセクション（H2レベル）とサブセクション（H3レベル）を含む構成案",
       items: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
           heading: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description: "H2見出し",
           },
           subheadings: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             description: "H3見出しのリスト",
             items: {
-              type: Type.STRING,
+              type: SchemaType.STRING,
             },
           },
           imageSuggestion: {
-            type: Type.STRING,
+            type: SchemaType.STRING,
             description:
               "このセクションの内容を補足するための、具体的で魅力的な画像やインフォグラフィックの提案。提案が不要な場合は省略してください。",
           },
@@ -58,27 +58,27 @@ const responseSchema = {
       },
     },
     conclusion: {
-      type: Type.STRING,
+      type: SchemaType.STRING,
       description: "記事の要点をまとめ、読者に行動を促す結論部分の要約",
     },
     keywords: {
-      type: Type.ARRAY,
+      type: SchemaType.ARRAY,
       description: "記事全体に含めるべき共起語や関連キーワードのリスト",
       items: {
-        type: Type.STRING,
+        type: SchemaType.STRING,
       },
     },
     characterCountAnalysis: {
-      type: Type.OBJECT,
+      type: SchemaType.OBJECT,
       description:
         "競合分析に基づく文字数の統計情報。商品ページやサービスページを除外し、純粋な記事コンテンツのみを分析対象とする。",
       properties: {
-        average: { type: Type.NUMBER, description: "平均文字数" },
-        median: { type: Type.NUMBER, description: "中央値の文字数" },
-        min: { type: Type.NUMBER, description: "最小文字数" },
-        max: { type: Type.NUMBER, description: "最大文字数" },
+        average: { type: SchemaType.NUMBER, description: "平均文字数" },
+        median: { type: SchemaType.NUMBER, description: "中央値の文字数" },
+        min: { type: SchemaType.NUMBER, description: "最小文字数" },
+        max: { type: SchemaType.NUMBER, description: "最大文字数" },
         analyzedArticles: {
-          type: Type.NUMBER,
+          type: SchemaType.NUMBER,
           description: "分析対象となった記事の数",
         },
       },
@@ -357,18 +357,21 @@ ${JSON.stringify(responseSchema, null, 2)}
 
   let jsonToParse: string | undefined;
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      tools: [{ googleSearchRetrieval: {} }],
+      generationConfig: {
         temperature: 0.7,
+        responseMimeType: "application/json",
+        responseSchema,
       },
     });
 
+    const result = await model.generateContent(prompt);
+    const response = result.response;
     const sources = response.candidates?.[0]?.groundingMetadata
-      ?.groundingChunks as GroundingChunk[] | undefined;
-    const rawText = response.text.trim();
+      ?.groundingChuncks as GroundingChunk[] | undefined;
+    const rawText = response.text().trim();
 
     // The API might return the JSON wrapped in markdown code fences.
     // We need to extract the JSON content before parsing.

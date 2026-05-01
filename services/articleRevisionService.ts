@@ -1,6 +1,6 @@
 // 記事修正サービス（Gemini 2.5 Pro使用）
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { Issue } from "./finalProofreadingAgents/types";
+import type { Issue, SourceInsertion } from "./finalProofreadingAgents/types";
 import {
   parseArticleElements,
   insertSourcesAtElements,
@@ -11,12 +11,16 @@ import { curriculumDataService } from "./curriculumDataService";
 
 // Gemini APIクライアントの初期化
 const genAI = new GoogleGenerativeAI(
-  import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || ""
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_GEMINI_API_KEY) ||
+    process.env.GEMINI_API_KEY ||
+    ""
 );
 
 // 環境変数から自社URLパターンを取得（出典優先順位に使用）
-const COMPANY_NOTE_URL = import.meta.env.VITE_COMPANY_NOTE_URL || "";
-const COMPANY_MEDIA_URL = import.meta.env.VITE_COMPANY_MEDIA_URL || "";
+const COMPANY_NOTE_URL =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_COMPANY_NOTE_URL) || "";
+const COMPANY_MEDIA_URL =
+  (typeof import.meta !== "undefined" && import.meta.env?.VITE_COMPANY_MEDIA_URL) || "";
 
 // 出典URL優先順位ルールを動的に生成
 function getCitationPriorityRules(): string {
@@ -368,10 +372,13 @@ self_refine:
 // Google Drive実績データを取得する関数
 async function fetchCompanyData(): Promise<any> {
   try {
-    const apiKey = import.meta.env.VITE_INTERNAL_API_KEY;
+    const env =
+      typeof import.meta !== "undefined" && import.meta.env
+        ? import.meta.env
+        : ({} as Record<string, string | undefined>);
+    const apiKey = env.VITE_INTERNAL_API_KEY;
 
-    const backendUrl =
-      import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+    const backendUrl = env.VITE_BACKEND_URL || "http://localhost:3001";
     const response = await fetch(`${backendUrl}/api/company-data`, {
       headers: {
         ...(apiKey && { "x-api-key": apiKey }),
@@ -618,7 +625,7 @@ ${relevantSegments
     // Grounding機能を有効化（最新情報を取得）
     tools: [
       {
-        googleSearch: {}, // Gemini 2.5 Pro対応の新形式
+        googleSearchRetrieval: {},
       },
     ],
   };
@@ -1269,7 +1276,7 @@ ${relevantSegments
     // Grounding機能を有効化（最新情報を取得）
     tools: [
       {
-        googleSearch: {}, // Gemini 2.5 Pro対応の新形式
+        googleSearchRetrieval: {},
       },
     ],
   };
@@ -1280,10 +1287,10 @@ ${relevantSegments
   console.log("📋 修正サービスが受け取った問題:");
   issues.forEach((issue, idx) => {
     console.log(`  問題${idx + 1}:`, {
-      issue: issue.issue,
-      original: (issue as any).original,
+      description: issue.description,
+      original: issue.original,
       suggestion: issue.suggestion,
-      metadata: (issue as any).metadata,
+      agentName: issue.agentName,
     });
   });
 
@@ -1292,14 +1299,14 @@ ${relevantSegments
     .map(
       (issue) => `
 【問題 ${issues.indexOf(issue) + 1}】
-- エージェント: ${(issue as any).metadata?.agentName || "不明"}
+- エージェント: ${issue.agentName || "不明"}
 - 種類: ${issue.type}
 - 深刻度: ${issue.severity}
-- 場所: ${issue.location?.sectionHeading || "全体"}
-- 説明: ${issue.issue}
-- 原文: "${(issue as any).original || "（検出箇所）"}"
+- 場所: ${issue.location || "全体"}
+- 説明: ${issue.description}
+- 原文: "${issue.original || "（検出箇所）"}"
 - 修正案: "${issue.suggestion || "適切に修正"}"
-- 信頼度: ${(issue as any).metadata?.confidence || 50}%`
+- 信頼度: ${Math.round((issue.confidence ?? 0.5) * 100)}%`
     )
     .join("\n");
 

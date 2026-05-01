@@ -12,13 +12,19 @@ import { curriculumDataService } from "./curriculumDataService";
 import { getContextForKeywords, isSupabaseAvailable } from "./primaryDataService";
 // latestAIModelsは汎用化のため削除
 
+/** tsx / Node 単体実行で import.meta.env が欠ける場合のフォールバック */
+const viteEnv: ImportMetaEnv =
+  typeof import.meta !== "undefined" && import.meta.env
+    ? import.meta.env
+    : ({} as ImportMetaEnv);
+
 const API_KEY =
-  import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  viteEnv.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
 
 console.log("🔑 Gemini API初期化チェック:");
 console.log(
   "  - import.meta.env.VITE_GEMINI_API_KEY:",
-  import.meta.env.VITE_GEMINI_API_KEY ? "設定済み" : "未設定"
+  viteEnv.VITE_GEMINI_API_KEY ? "設定済み" : "未設定"
 );
 console.log(
   "  - process.env.GEMINI_API_KEY:",
@@ -35,7 +41,7 @@ console.log("✅ Gemini API初期化成功");
 const genAI = new GoogleGenerativeAI(API_KEY);
 
 // SEOコンテンツ執筆のカスタムインストラクション（三段セルフリファイン + ファクトチェック強化版）
-const WRITING_INSTRUCTIONS = `
+const WRITING_INSTRUCTIONS_SEO = `
 meta:
   name: "SEOライター：三段セルフリファイン + ファクトチェック強化（完全版）"
   version: "2025-09-06"
@@ -536,14 +542,73 @@ samples:
     - <strong>拡張性</strong>：他業務への展開可能性
 `;
 
-interface WritingRequest {
+// note（ナラティブ）— SEO のキーワード密度／メタ／H2 クエリ調整／内部リンク運用は対象外
+const WRITING_INSTRUCTIONS_NOTE = `
+meta:
+  name: "note ナラティブ（KEN persona / SEO評価なし）"
+  version: "2026-05-01"
+  language: "ja-JP"
+
+role: |
+  note で読み切りたくなる独白・論考・経験談ハイブリッドの HTML 本文のみ出力する。
+  作業手順・採点表・コードフェンス以外のメタ情報は出力禁止。
+
+tone_style:
+  base: ["具体シーン／感情の揺れ","視点の一貫","断定は自分の経験・観察に接地"]
+  persona: |
+    【KEN ペルソナ】テキストが与えられる場合は語り口・人称・禁則に完全準拠する。
+    社内向けのみと明示された factual は公開原稿に書かず一般化または省略する。
+  ng: ["テンプレ HOWTO の量産調","抽象コンサル総論のみ"]
+
+scope:
+  no_seo: |
+    メタディスクリプション・OG・検索クエリ完全一致の見出し・関連語の低密度／高密度調整・
+    競合クロール起因の構成最適は行わない。内部リンクや URL だけの並べ置きも禁止。
+
+structure:
+  flow: |
+    構成メモのアイディア順は維持。見出しは自然語でよい（キーワード詰め禁止）。
+    <h2> と必要時のみ <h3>。リードはフック優先。「本記事では〜」のメタ説明調は禁止。
+    段落は <p>。話題転換で分割。
+
+emphasis_rules:
+  bold_tag: "<strong>"
+  usage: "本当に残したい一点にのみ。過剰太字禁止。"
+
+writing_prohibitions:
+  patterns_to_avoid:
+    - "同型語尾／書き出しのトリプル連打"
+    - "検索用に H2 にキーワードを並べること"
+
+research_policy:
+  caution: |
+    入力や一般知識に無い統計・固有名・制度・案件を捏造しない。
+
+output_contract:
+  format: |
+    完全な HTML（<p> <h2> ほか必要なら <ul>）。Markdown 記法・コードフェンス禁止。
+`;
+
+export type WritingContentMode = "seo" | "note";
+
+function selectWritingInstructions(mode?: WritingContentMode): string {
+  return mode === "note" ? WRITING_INSTRUCTIONS_NOTE : WRITING_INSTRUCTIONS_SEO;
+}
+
+export interface WritingRequest {
   outline: string; // マークダウン形式の構成案
-  keyword: string; // ターゲットキーワード
+  keyword: string; // メインクエリまたはトピック（note でも「テーマ」のフックになるだけ）
   targetAudience?: string; // ターゲット読者
   tone?: "formal" | "casual" | "professional";
-  useGrounding?: boolean; // Grounding機能を使うか
-  useCompanyData?: boolean; // 自社データを使うか
-  useCurriculum?: boolean; // カリキュラムデータを使うか
+  useGrounding?: boolean; // Grounding機能を使うか（note 既定 false 推奨）
+  useCompanyData?: boolean; // 自社データを使うか（note 既定はオフ／明示時のみ）
+  useCurriculum?: boolean; // カリキュラムデータを使うか（note 既定オフ／明示時のみ）
+  /** 既定 seo。note では SEO・競合構成・KW 運用プロンプトを使わない。 */
+  contentMode?: WritingContentMode;
+  /** ラン側 `ken_persona_context.txt` や UI 入力からそのまま貼り付け */
+  kenPersonaMarkdown?: string;
+  /** note でも Supabase 一次を足すとき true（既定 SEO 並み／note は通常 false） */
+  usePrimaryKnowledge?: boolean;
 }
 
 // 内部リンクマップを取得する関数
@@ -551,7 +616,7 @@ async function fetchInternalLinkMap(): Promise<Map<string, string>> {
   const linkMap = new Map<string, string>();
 
   try {
-    const API_KEY = import.meta.env.VITE_INTERNAL_API_KEY;
+    const API_KEY = viteEnv.VITE_INTERNAL_API_KEY;
     if (!API_KEY) {
       console.warn(
         "⚠️ INTERNAL_API_KEY未設定のため、内部リンクマップを取得できません"
@@ -560,8 +625,8 @@ async function fetchInternalLinkMap(): Promise<Map<string, string>> {
     }
 
     const API_URL =
-      import.meta.env.VITE_API_URL?.replace("/api", "") ||
-      import.meta.env.VITE_BACKEND_URL ||
+      viteEnv.VITE_API_URL?.replace("/api", "") ||
+      viteEnv.VITE_BACKEND_URL ||
       "http://localhost:3001";
     const response = await fetch(
       `${API_URL}/api/spreadsheet-mode/internal-links`,
@@ -596,6 +661,9 @@ async function fetchInternalLinkMap(): Promise<Map<string, string>> {
 export async function generateArticleV3(
   request: WritingRequest
 ): Promise<string> {
+  const mode: WritingContentMode = request.contentMode ?? "seo";
+  const isNote = mode === "note";
+
   console.log("📝 ライティングエージェントV3 起動");
   console.log(`📌 対象キーワード: ${request.keyword}`);
   console.log("📊 リクエスト詳細:");
@@ -603,6 +671,7 @@ export async function generateArticleV3(
     "  - outline長:",
     request.outline ? request.outline.length : "null"
   );
+  console.log("  - contentMode:", mode);
   console.log("  - targetAudience:", request.targetAudience);
   console.log("  - tone:", request.tone);
   console.log("  - useGrounding:", request.useGrounding);
@@ -644,10 +713,13 @@ export async function generateArticleV3(
   const startTime = Date.now();
 
   try {
-    // 自社データの取得（オプション）
+    const useCompanyDataFetch = isNote
+      ? request.useCompanyData === true
+      : request.useCompanyData !== false;
+
+    // 自社データの取得（オプション／note は明示 true のときのみ）
     let companyDataText = "";
-    if (request.useCompanyData !== false) {
-      // デフォルトで有効（Google Drive設定時に自動で使用）
+    if (useCompanyDataFetch) {
       try {
         console.log("\n🔄 [1/4] 自社実績データを取得中...");
         const dataStartTime = Date.now();
@@ -683,12 +755,13 @@ ${relevantData
         // エラーがあっても続行
       }
     } else {
-      console.log("⏭️ [1/4] スキップ: 自社データ使用しない設定");
+      console.log("⏭️ [1/4] スキップ: 自社データ使用しない設定（note は既定オフ）");
     }
 
-    // Supabase一次情報の取得（オプション）
+    // Supabase一次情報の取得（オプション／note は usePrimaryKnowledge 明示時のみ）
     let primaryDataText = "";
-    if (isSupabaseAvailable()) {
+    const tryPrimaryKnowledge = !isNote || request.usePrimaryKnowledge === true;
+    if (tryPrimaryKnowledge && isSupabaseAvailable()) {
       try {
         console.log("\n🔄 [1.6/4] Supabase一次情報を検索中...");
         const primaryStartTime = Date.now();
@@ -705,13 +778,18 @@ ${relevantData
         console.error("⚠️ [1.6/4] エラー: 一次情報取得失敗:", error);
         // エラーがあっても続行
       }
+    } else if (!tryPrimaryKnowledge) {
+      console.log("⏭️ [1.6/4] スキップ: note で一次 DB 連携オフ（usePrimaryKnowledge 未指定）");
     } else {
       console.log("⏭️ [1.6/4] スキップ: Supabase未設定");
     }
 
-    // 内部リンクマップの取得
+    // 内部リンクマップの取得（SEO のみ／note は参照しない）
     let internalLinkText = "";
     try {
+      if (isNote) {
+        console.log("\n⏭️ [1.7/4] スキップ: note モードでは内部リンクを使わない");
+      } else {
       console.log("\n🔄 [1.7/4] 内部リンクマップを取得中...");
       const linkStartTime = Date.now();
       const internalLinkMap = await fetchInternalLinkMap();
@@ -751,15 +829,19 @@ ${linkList}
       } else {
         console.log("ℹ️ [1.7/4] 完了: 内部リンクなし");
       }
+      }
     } catch (error) {
       console.error("⚠️ [1.7/4] エラー: 内部リンクマップ取得失敗:", error);
       // エラーがあっても続行
     }
 
-    // カリキュラムデータの取得（オプション）
+    const useCurriculumFetch = isNote
+      ? request.useCurriculum === true
+      : request.useCurriculum !== false;
+
+    // カリキュラムデータの取得（オプション／note は明示時のみ）
     let curriculumDataText = "";
-    if (request.useCurriculum !== false) {
-      // デフォルトでは使用する
+    if (useCurriculumFetch) {
       try {
         console.log("\n🔄 [1.5/4] カリキュラムデータを検索中...");
         const currStartTime = Date.now();
@@ -780,6 +862,8 @@ ${linkList}
         console.error("⚠️ [1.5/4] エラー: カリキュラムデータ取得失敗:", error);
         // エラーがあっても続行
       }
+    } else if (isNote) {
+      console.log("\n⏭️ [1.5/4] スキップ: note 既定ではカリキュラム未取得（明示時のみ）");
     }
 
     // モデル設定
@@ -792,14 +876,18 @@ ${linkList}
       },
     };
 
+    const groundingOn = isNote
+      ? request.useGrounding === true
+      : Boolean(request.useGrounding);
+
     // Grounding機能（Google検索による最新情報取得）
     // 無料枠：
     // - Google AI Studio: 完全無料（1日1,500クエリまで）
     // - Vertex AI: 1日10,000クエリ無料（その後$35/1000クエリ）
-    if (request.useGrounding) {
+    if (groundingOn) {
       modelConfig.tools = [
         {
-          googleSearch: {}, // Gemini 2.0以降の新形式
+          googleSearchRetrieval: {}, // Gemini 2.0以降の新形式
         },
       ];
       console.log(
@@ -813,15 +901,43 @@ ${linkList}
 
     console.log("\n🔄 [3/4] プロンプト構築中...");
 
+    const personaBlock = request.kenPersonaMarkdown?.trim()
+      ? `
+
+【KEN ペルソナ（文体・禁止事項の正本）】
+
+${request.kenPersonaMarkdown.trim()}
+`
+      : "";
+
+    const keywordLabel = isNote
+      ? `【テーマ／フック（検索クエリ最適化はしない）】`
+      : `【メインキーワード】`;
+
+    const memoGuide = isNote
+      ? `【構成メモとの関係】
+- メモのエピソード・論点は全体の運びへ織り込む（並べリストのような展開は避ける）
+- 見出しにキーワードを無理に埋め込まない`
+      : `【重要】執筆メモの活用について：
+- 各H2セクションの「執筆メモ」に記載された要点は必ず記事内で触れてください
+- H3の執筆メモがある場合は、その内容を具体的に展開してください
+- 執筆メモは「何を書くべきか」の重要な指針なので、8割以上の要素を反映させてください
+- ただし、執筆メモの内容を機械的にコピーするのではなく、自然な文章として展開してください`;
+
+    const execIntro = isNote
+      ? `上記構成案・persona とカスタムインストラクションに沿い、note 向けナラティブ本文のみ出力してください。
+メタディスクリプション・検索順位施策は不要です。`
+      : `上記の構成案とカスタムインストラクションに基づいて、SEOに最適化された記事を執筆してください。`;
+
     // プロンプトの構築
     const prompt = `
-${WRITING_INSTRUCTIONS}
-
+${selectWritingInstructions(mode)}
+${personaBlock}
 ＜構成内容＞
 
 ${request.outline}
 
-【メインキーワード】
+${keywordLabel}
 ${request.keyword}
 
 ${request.targetAudience ? `【ターゲット読者】\n${request.targetAudience}` : ""}
@@ -830,26 +946,26 @@ ${curriculumDataText}
 ${internalLinkText}
 ${primaryDataText}
 【執筆指示】
-上記の構成案とカスタムインストラクションに基づいて、SEOに最適化された記事を執筆してください。
+${execIntro}
 
-【重要】執筆メモの活用について：
-- 各H2セクションの「執筆メモ」に記載された要点は必ず記事内で触れてください
-- H3の執筆メモがある場合は、その内容を具体的に展開してください
-- 執筆メモは「何を書くべきか」の重要な指針なので、8割以上の要素を反映させてください
-- ただし、執筆メモの内容を機械的にコピーするのではなく、自然な文章として展開してください
+${memoGuide}
 
 ${
-  companyDataText
+  companyDataText && !isNote
     ? `
 【重要】企業事例について：
 - 「導入事例」「成功事例」セクションでは、以下に提供された実績データの企業のみを使用すること
 - 以下で提供されていない企業を勝手に追加しないこと（提供データ以外の企業は使用禁止）
 - 必ず提供されたデータの中から3社を使用し、それぞれの具体的な数値や成果を正確に記載すること
 - 企業名、数値、成果内容は提供されたデータのまま使用すること（改変禁止）`
+    : companyDataText
+      ? `
+【企業事例（提供データのみ／改変禁止）】
+※上記データに明示された会社・数値のみ使用。捏造禁止。`
     : ""
 }
 ${
-  request.useGrounding
+  groundingOn
     ? "※ 最新情報はウェブ検索で確認しながら執筆してください。"
     : ""
 }
@@ -934,6 +1050,12 @@ export async function generateSectionV3(
   const startTime = Date.now();
 
   try {
+    const mode: WritingContentMode = request.contentMode ?? "seo";
+    const isNote = mode === "note";
+    const groundingOn = isNote
+      ? request.useGrounding === true
+      : Boolean(request.useGrounding);
+
     const modelConfig: any = {
       model: "gemini-2.5-pro",
       generationConfig: {
@@ -942,7 +1064,7 @@ export async function generateSectionV3(
       },
     };
 
-    if (request.useGrounding) {
+    if (groundingOn) {
       modelConfig.tools = [
         {
           googleSearchRetrieval: {
@@ -957,8 +1079,23 @@ export async function generateSectionV3(
 
     const model = genAI.getGenerativeModel(modelConfig);
 
+    const personaBlock =
+      request.kenPersonaMarkdown?.trim()?.slice(0, 6000)?.trim()
+        ? `
+
+【KEN ペルソナ】
+${request.kenPersonaMarkdown!.trim().slice(0, 6000)}
+`
+        : "";
+
+    const kwLab = isNote ? "【テーマ／フック】" : "【キーワード】";
+    const sectionTail = isNote
+      ? "このセクションのみを書いてください。前後の語りとのつながりを保ち、検索クエリ最適化・メタ出力は禁止です。"
+      : "このセクションのみを執筆してください。前のセクションとの繋がりを意識し、自然な流れで内容を展開してください。";
+
     const prompt = `
-${WRITING_INSTRUCTIONS}
+${selectWritingInstructions(mode)}
+${personaBlock}
 
 【これまでの文脈】
 ${previousContext.slice(-1000)} // 最後の1000文字のみ
@@ -966,11 +1103,10 @@ ${previousContext.slice(-1000)} // 最後の1000文字のみ
 【今回執筆するセクション】
 ${sectionOutline}
 
-【キーワード】
+${kwLab}
 ${request.keyword}
 
-このセクションのみを執筆してください。前のセクションとの繋がりを意識し、
-自然な流れで内容を展開してください。
+${sectionTail}
 `;
 
     console.log("🔄 セクション執筆中...");

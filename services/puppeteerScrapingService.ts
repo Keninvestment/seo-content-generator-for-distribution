@@ -20,10 +20,10 @@ export async function scrapeWithPuppeteer(
   try {
     console.log(`🔧 Puppeteerでスクレイピング: ${url}`);
 
-    const apiKey = import.meta.env.VITE_INTERNAL_API_KEY;
+    const apiKey = import.meta.env?.VITE_INTERNAL_API_KEY;
 
     const backendUrl =
-      import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+      import.meta.env?.VITE_BACKEND_URL || "http://localhost:3001";
     const response = await fetch(`${backendUrl}/api/scrape`, {
       method: "POST",
       headers: {
@@ -61,10 +61,10 @@ export async function scrapeMultipleWithPuppeteer(
   try {
     console.log(`🔧 ${urls.length}件のURLを一括スクレイピング`);
 
-    const apiKey = import.meta.env.VITE_INTERNAL_API_KEY;
+    const apiKey = import.meta.env?.VITE_INTERNAL_API_KEY;
 
     const backendUrl =
-      import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+      import.meta.env?.VITE_BACKEND_URL || "http://localhost:3001";
     const response = await fetch(`${backendUrl}/api/scrape-multiple`, {
       method: "POST",
       headers: {
@@ -133,7 +133,7 @@ export async function scrapeMultipleWithPuppeteer(
 export async function checkScrapingServerHealth(): Promise<boolean> {
   try {
     const backendUrl =
-      import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+      import.meta.env?.VITE_BACKEND_URL || "http://localhost:3001";
     const response = await fetch(`${backendUrl}/api/health`);
     const data = await response.json();
     return data.status === "ok";

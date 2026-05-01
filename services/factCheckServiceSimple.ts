@@ -5,6 +5,7 @@
 
 import { MultiAgentOrchestrator } from './finalProofreadingAgents/MultiAgentOrchestrator';
 import { reviseBatchIssues, insertSourcesAfterRevision } from './articleRevisionService';
+import type { Issue } from './finalProofreadingAgents/types';
 
 export interface FactCheckResult {
   originalText: string;
@@ -61,10 +62,12 @@ export async function performFactCheck(text: string, options: FactCheckOptions =
   for (const agentResult of checkResult.agentResults) {
     if (agentResult.issues) {
       for (const issue of agentResult.issues) {
+        const displaySeverity =
+          issue.severity === 'info' ? 'minor' : issue.severity;
         issues.push({
           type: agentResult.agentName,
           description: issue.description || '',
-          severity: issue.severity || 'minor'
+          severity: displaySeverity as 'critical' | 'major' | 'minor',
         });
         // 詳細情報も保存（suggestion, originalなど）
         detailedIssues.push({
@@ -133,24 +136,28 @@ export async function performFactCheck(text: string, options: FactCheckOptions =
       // reviseBatchIssuesは文字列を返す
       correctedText = await reviseBatchIssues({
         originalArticle: text,
-        issues: detailedIssues.map(issue => ({
-          type: issue.severity === 'critical' ? 'critical' :
-                issue.severity === 'major' ? 'major' : 'minor',
-          severity: issue.severity,
-          location: {
-            sectionHeading: issue.location || '',
-            charPosition: { start: 0, end: text.length }
-          },
-          issue: issue.description,
-          suggestion: issue.suggestion || '修正が必要です',
-          original: issue.original || '',
-          impact: issue.severity === 'critical' ? 'high' :
-                  issue.severity === 'major' ? 'medium' : 'low',
-          metadata: {
+        issues: detailedIssues.map(
+          (issue): Issue => ({
+            type: 'factual-error',
+            severity:
+              issue.severity === 'info' ? 'minor' : issue.severity,
+            location:
+              typeof issue.location === 'string'
+                ? issue.location
+                : (issue.location as { sectionHeading?: string } | undefined)
+                    ?.sectionHeading ?? '',
+            description: issue.description || '',
+            original: issue.original || '',
+            suggestion: issue.suggestion || '修正が必要です',
+            confidence:
+              typeof issue.confidence === 'number'
+                ? issue.confidence > 1
+                  ? issue.confidence / 100
+                  : issue.confidence
+                : 0.5,
             agentName: issue.agentName,
-            confidence: issue.confidence || 50
-          }
-        })),
+          })
+        ),
         category: 'major',  // majorカテゴリーとして処理
         sourceInsertions: sourceInsertions.map(source => ({
           heading: source.location || '',
@@ -158,7 +165,6 @@ export async function performFactCheck(text: string, options: FactCheckOptions =
           h3: '',
           url: source.url,
           title: source.title,
-          snippet: ''
         })),
         // 手動ファクトチェック専用フラグ
         isManualFactCheck: true
@@ -182,7 +188,6 @@ export async function performFactCheck(text: string, options: FactCheckOptions =
         h3: '',
         url: source.url,
         title: source.title,
-        snippet: ''
       }));
 
       // 出典を挿入

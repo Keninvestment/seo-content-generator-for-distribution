@@ -1,5 +1,11 @@
 import React, { useState, useRef, useEffect } from "react";
-import type { SeoOutline, SeoOutlineV2, SubheadingWithNote } from "../types";
+import {
+  getOutlineMetaDescription,
+  isSeoOutlineV2,
+  type SeoOutline,
+  type SeoOutlineV2,
+  type SubheadingWithNote,
+} from "../types";
 import {
   generateArticle,
   regenerateSection,
@@ -42,32 +48,10 @@ import { generateSlug } from "../services/slugGenerator";
  */
 function getSafeOriginal(issue: Issue): string {
   const original = issue.original;
-
   if (original === null || original === undefined) {
     return "";
   }
-
-  if (typeof original === "string") {
-    return original;
-  }
-
-  if (
-    typeof original === "number" ||
-    typeof original === "boolean" ||
-    typeof original === "bigint"
-  ) {
-    return String(original);
-  }
-
-  if (Array.isArray(original)) {
-    return original.join(", ");
-  }
-
-  if (typeof original === "object") {
-    return JSON.stringify(original);
-  }
-
-  return String(original);
+  return typeof original === "string" ? original : String(original);
 }
 
 // クリーンアップ処理用のヘルパー関数
@@ -97,6 +81,13 @@ function cleanupArticleContent(content: string): string {
   return cleaned;
 }
 
+/** 税務・投資系キーワードでは 11 体校閲プロンプトを KEN 専門領域モードに切り替え（#1512） */
+function isKenTaxInvestKeyword(kw: string): boolean {
+  return /税|申告|NISA|nisa|法人税|所得税|投資信託|投資|配当|暗号資産|確定申告|課税|フロントローディング|ふるさと納税|タックスアンサー/.test(
+    kw
+  );
+}
+
 interface ArticleWriterProps {
   outline: SeoOutline | SeoOutlineV2; // Ver.1とVer.2両方の構成を受け付ける
   keyword: string;
@@ -109,16 +100,27 @@ interface ArticleWriterProps {
     metaDescription: string;
     htmlContent: string;
     plainText: string;
+    characterCount?: number;
   }) => void;
   isAutoMode?: boolean; // フル自動モードかどうか
   onAutoComplete?: () => void; // フル自動モード完了時のコールバック
   onAutoRevisionStart?: () => void; // 自動修正開始時のコールバック
   skipAutoGenerate?: boolean; // 自動生成をスキップ（編集再開時用）
+  /** note へ流すとき true。V3 + contentMode note（競合・SEO チェックリストは使わない） */
+  noteWriting?: boolean;
+  /** `ken_persona_context.txt` 相当を UI または親から渡す */
+  notePersonaMarkdown?: string;
   onOpenImageAgent?: (articleData: {
     title: string;
     content: string;
     keyword: string;
+    metaDescription?: string;
+    slug?: string;
+    isTestMode?: boolean;
     autoMode?: boolean;
+    plainText?: string;
+    score?: number;
+    spreadsheetRow?: number;
   }) => void; // 画像生成エージェントをiframeで開く
 }
 
@@ -134,6 +136,8 @@ const ArticleWriter: React.FC<ArticleWriterProps> = ({
   onAutoComplete,
   onAutoRevisionStart,
   skipAutoGenerate = false,
+  noteWriting = false,
+  notePersonaMarkdown = "",
   onOpenImageAgent,
 }) => {
   // デバッグ：受け取ったデータを確認
@@ -246,16 +250,32 @@ const ArticleWriter: React.FC<ArticleWriterProps> = ({
       // Ver.3モードの場合（Gemini Pro + Grounding）
       if (writingMode === "v3") {
         setGenerationProgress(
-          "Ver.3モード（Gemini Pro + Grounding）で記事を生成中..."
+          noteWriting
+            ? "Ver.3 note（ナラティブ／ペルソナ反映）で生成中..."
+            : "Ver.3モード（Gemini Pro + Grounding）で記事を生成中..."
         );
 
         // テスト構成(Ver.2)からの実行の場合、outlineがnullの可能性があるので確認
-        const actualOutline = outline || {
-          title: `${keyword}完全ガイド`,
-          metaDescription: `${keyword}について詳しく解説。基礎から応用まで網羅的に紹介します。`,
-          targetAudience: "ビジネスパーソン、マーケター、経営者",
-          headings: [],
-        };
+        const actualOutline: SeoOutline | SeoOutlineV2 =
+          outline ??
+          ({
+            title: `${keyword}完全ガイド`,
+            metaDescription: `${keyword}について詳しく解説。基礎から応用まで網羅的に紹介します。`,
+            introductions: { conclusionFirst: "", empathy: "" },
+            targetAudience: "ビジネスパーソン、マーケター、経営者",
+            outline: [],
+            conclusion: "",
+            keywords: [keyword],
+            competitorComparison: {
+              averageH2Count: 0,
+              averageH3Count: 0,
+              ourH2Count: 0,
+              ourH3Count: 0,
+              freshnessRisks: [],
+              differentiators: [],
+            },
+            searchIntent: { primary: "KNOW" },
+          } satisfies SeoOutlineV2);
 
         // 構成案をマークダウン形式に変換
         const outlineMarkdown = convertOutlineToMarkdown(
@@ -269,17 +289,30 @@ const ArticleWriter: React.FC<ArticleWriterProps> = ({
           keyword: keyword,
           targetAudience: actualOutline.targetAudience,
           tone: "professional",
-          useGrounding: true, // Grounding機能有効（最新情報を検索しながら執筆）
+          useGrounding: noteWriting ? false : true,
+          useCompanyData: noteWriting ? false : undefined,
+          useCurriculum: noteWriting ? false : undefined,
+          ...(noteWriting
+            ? {
+                contentMode: "note" as const,
+                kenPersonaMarkdown: notePersonaMarkdown ?? "",
+              }
+            : {}),
         });
 
         // 一時的に保存（チェック後にクリーンアップするため）
-        console.log("✅ Ver.3生成完了（Grounding機能使用）");
+        console.log(
+          noteWriting
+            ? "✅ Ver.3 note 生成完了"
+            : "✅ Ver.3生成完了（Grounding機能使用）"
+        );
 
         // 品質チェックも実行
         const checkResult = await checkArticleV3({
           article: v3Result,
           outline: outlineMarkdown,
           keyword: keyword,
+          ...(noteWriting ? { contentMode: "note" as const } : {}),
         });
 
         console.log(`📊 品質スコア: ${checkResult.overallScore}/100`);
@@ -295,9 +328,7 @@ const ArticleWriter: React.FC<ArticleWriterProps> = ({
         // generatedArticleを更新（クリーンアップ済みのコンテンツを使用）
         generatedArticle = {
           title: actualOutline.title || `${keyword}について`,
-          metaDescription:
-            actualOutline.metaDescription ||
-            `${keyword}に関する詳細な解説記事です。`,
+          metaDescription: getOutlineMetaDescription(actualOutline, keyword),
           htmlContent: cleanedHtmlContent,
           plainText: cleanedPlainText,
         };
@@ -657,10 +688,13 @@ const ArticleWriter: React.FC<ArticleWriterProps> = ({
 
   // セクションの再生成
   const handleRegenerateSection = async (sectionIndex: number) => {
-    if (!article || !outline.competitorResearch) return;
+    if (!article) return;
 
-    const sections = outline.outline || outline.sections;
-    if (!sections) return;
+    const sections = outline.outline;
+    const frequencyWords =
+      !isSeoOutlineV2(outline) && outline.competitorResearch
+        ? outline.competitorResearch.frequencyWords
+        : undefined;
     const section = sections[sectionIndex];
     setRegeneratingSection(section.heading);
 
@@ -672,7 +706,7 @@ const ArticleWriter: React.FC<ArticleWriterProps> = ({
         {
           keyword,
           targetAudience: outline.targetAudience,
-          frequencyWords: outline.competitorResearch.frequencyWords,
+          frequencyWords,
           regulation,
         }
       );
@@ -817,12 +851,20 @@ ${article.plainText}`;
           enableLegalCheck: true,
           parallel: true,
           timeout: 180000, // 3分（180秒）に延長
+          domainVertical: isKenTaxInvestKeyword(keyword)
+            ? "ken-tax-invest"
+            : "general",
           onProgress: (message, progress) => {
             setFinalProofStatus(`${message} (${progress}%)`);
           },
         });
 
-        const result = await orchestrator.execute(editedContent);
+        const result = await orchestrator.execute(editedContent, {
+          keyword,
+          domainVertical: isKenTaxInvestKeyword(keyword)
+            ? "ken-tax-invest"
+            : "general",
+        });
         proofResult = result;
         console.log("✅ マルチエージェント実行完了:", {
           overallScore: result.overallScore,
@@ -837,7 +879,7 @@ ${article.plainText}`;
           console.log(`📊 出典数: ${result.sourceInsertions.length}件`);
           result.sourceInsertions.forEach((insertion, index) => {
             console.log(
-              `[${index + 1}] 場所: "${insertion.location}" → URL: ${
+              `[${index + 1}] 場所: "${insertion.location ?? insertion.heading}" → URL: ${
                 insertion.url
               }`
             );
@@ -891,7 +933,7 @@ ${
 ${result.criticalIssues
   .map(
     (issue, idx) =>
-      `${idx + 1}. [${issue.agentName}] ${issue.description}
+      `${idx + 1}. [${issue.agentName ?? "不明"}] ${issue.description}
    場所: ${issue.location || "不明"}
    原文: "${issue.original || "-"}"
    提案: "${issue.suggestion || "-"}"`
@@ -908,7 +950,7 @@ ${result.majorIssues
   .slice(0, 5)
   .map(
     (issue, idx) =>
-      `${idx + 1}. [${issue.agentName}] ${issue.description}
+      `${idx + 1}. [${issue.agentName ?? "不明"}] ${issue.description}
    場所: ${issue.location || "不明"}
    提案: "${issue.suggestion || "-"}"`
   )
@@ -1111,7 +1153,7 @@ ${
     if (isRevising) return; // 修正中の場合は処理しない
 
     // 一意のIDを生成（エージェント名と説明から）
-    const issueId = `${issue.agentName}-${issue.description}`;
+    const issueId = `${issue.agentName ?? "agent"}-${issue.description}`;
 
     console.log(`🔧 個別修正開始: ${issue.description}`);
 
@@ -1268,7 +1310,7 @@ ${
       } else {
         // 70-74点: 問題なしでも再校閲が必要
         console.log("📋 70-74点で問題なし → 再校閲を実行");
-        await performReProofread(articleContent, scoreType, 0);
+        await performReProofread(articleContent, "mid-score", 0);
       }
       return;
     }
@@ -1512,7 +1554,14 @@ ${
       });
 
       if (revisedContent && revisedContent.trim() !== articleContent.trim()) {
-        setArticle(revisedContent);
+        setEditedContent(revisedContent);
+        if (article) {
+          setArticle({
+            ...article,
+            htmlContent: revisedContent,
+            plainText: revisedContent.replace(/<[^>]*>/g, ""),
+          });
+        }
         console.log(`✅ 修正完了 (${retryCount + 1}回目) → 再校閲を実行`);
 
         // 修正後に再校閲を実行
@@ -1567,6 +1616,9 @@ ${
       const orchestrator = new MultiAgentOrchestrator({
         enableLegalCheck: true,
         timeout: 180000, // 3分
+        domainVertical: isKenTaxInvestKeyword(keyword)
+          ? "ken-tax-invest"
+          : "general",
         onProgress: (message, progress) => {
           setAutoFlowProgress({
             isRunning: true,
@@ -1577,7 +1629,12 @@ ${
         },
       });
 
-      const reCheckResult = await orchestrator.execute(articleContent);
+      const reCheckResult = await orchestrator.execute(articleContent, {
+        keyword,
+        domainVertical: isKenTaxInvestKeyword(keyword)
+          ? "ken-tax-invest"
+          : "general",
+      });
       console.log(
         `📊 再校閲結果 (${retryCount + 1}回目): ${reCheckResult.overallScore}点`
       );
@@ -1793,9 +1850,7 @@ ${
     }
 
     try {
-      if (onAutoComplete) {
-        await onAutoComplete();
-      }
+      onAutoComplete?.();
       console.log("✅ フル自動モード: 合格スコアで完了");
     } catch (error) {
       console.error("❌ onAutoComplete実行エラー:", error);
@@ -1856,10 +1911,13 @@ ${
       plainText: "テスト記事のプレーンテキスト版です。",
     };
 
-    // テスト用データを設定
-    setKeyword(testKeyword);
-    setOutline(testOutline as any);
-    setArticle(testArticle as any);
+    // テスト用データを設定（props の keyword / outline は変更不可のためローカル変数のみ差し替え）
+    setArticle({
+      title: testArticle.title,
+      metaDescription: testArticle.metaDescription,
+      htmlContent: testArticle.content,
+      plainText: testArticle.plainText,
+    });
     setEditedContent(testArticle.content);
 
     console.log("✅ テスト用記事を設定しました");
@@ -1874,8 +1932,8 @@ ${
       // Step 1: slug生成テスト
       console.log("\n📝 Step 1: Slug生成テスト");
       const { generateSlug } = await import("../services/slugGenerator");
-      const testSlug = await generateSlug(keyword);
-      console.log(`  キーワード: "${keyword}" → Slug: "${testSlug}"`);
+      const testSlug = await generateSlug(testKeyword);
+      console.log(`  キーワード: "${testKeyword}" → Slug: "${testSlug}"`);
 
       // Step 2: 最終校閲はスキップ（時間短縮のため）
       console.log(
@@ -1894,9 +1952,11 @@ ${
       console.log("\n🖼️ Step 3: 画像生成エージェントへのデータ準備");
       const spreadsheetRow = localStorage.getItem("currentSpreadsheetRow");
       const imageGenData = {
-        keyword: keyword,
-        title: article?.title || "",
-        metaDescription: outline?.metaDescription || "",
+        keyword: testKeyword,
+        title: testArticle.title || "",
+        metaDescription:
+          testArticle.metaDescription ||
+          getOutlineMetaDescription(outline, keyword),
         slug: testSlug,
         htmlContent: editedContent,
         plainText: editedContent.replace(/<[^>]*>/g, ""),
@@ -2009,7 +2069,7 @@ ${
 
     // 既に修正済みの問題を除外
     const unrevvisedIssues = allIssues.filter((issue) => {
-      const issueId = `${issue.agentName}-${issue.description}`;
+      const issueId = `${issue.agentName ?? "agent"}-${issue.description}`;
       return !revisedIssues.has(issueId);
     });
 
@@ -2082,7 +2142,7 @@ ${
 
       // 修正済みリストに追加（実際に処理した問題のみ）
       const processedIssueIds = issuesToProcess.map(
-        (issue) => `${issue.agentName}-${issue.description}`
+        (issue) => `${issue.agentName ?? "agent"}-${issue.description}`
       );
       setRevisedIssues((prev) => new Set([...prev, ...processedIssueIds]));
 
@@ -2470,7 +2530,7 @@ ${
                   セクション管理
                 </h3>
                 <div className="space-y-2">
-                  {(outline.outline || outline.sections || []).map(
+                  {(outline.outline || []).map(
                     (section, index) => (
                       <div key={index} className="bg-white p-3 rounded-lg border border-gray-200">
                         <div className="flex items-start justify-between">
@@ -2628,7 +2688,7 @@ ${
                       </div>
                       <div className="space-y-2 max-h-60 overflow-y-auto">
                         {multiAgentResult.criticalIssues.map((issue, idx) => {
-                          const issueId = `${issue.agentName}-${issue.description}`;
+                          const issueId = `${issue.agentName ?? "agent"}-${issue.description}`;
                           const isRevised = revisedIssues.has(issueId);
                           const isRevising = revisingIssueId === issueId;
                           return (
@@ -2652,7 +2712,7 @@ ${
                                       : "text-red-300"
                                   }`}
                                 >
-                                  [{issue.agentName}]
+                                  [{issue.agentName ?? "不明"}]
                                   {isRevised && (
                                     <span className="text-green-400">
                                       ✅ 修正済
@@ -2733,7 +2793,7 @@ ${
                       </div>
                       <div className="space-y-2 max-h-60 overflow-y-auto">
                         {multiAgentResult.majorIssues.map((issue, idx) => {
-                          const issueId = `${issue.agentName}-${issue.description}`;
+                          const issueId = `${issue.agentName ?? "agent"}-${issue.description}`;
                           const isRevised = revisedIssues.has(issueId);
                           return (
                             <div
@@ -2752,7 +2812,7 @@ ${
                                       : "text-yellow-300"
                                   }`}
                                 >
-                                  [{issue.agentName}] {isRevised && "✅ 修正済"}
+                                  [{issue.agentName ?? "不明"}] {isRevised && "✅ 修正済"}
                                 </div>
                                 <button
                                   onClick={() =>
@@ -3084,10 +3144,11 @@ const startImageGeneration = async (
         );
       }
     } catch (error) {
-      console.error("❌ Slack通知エラー:", error);
-      console.error("  - Error name:", error.name);
-      console.error("  - Error message:", error.message);
-      console.error("  - Error stack:", error.stack);
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.error("❌ Slack通知エラー:", err);
+      console.error("  - Error name:", err.name);
+      console.error("  - Error message:", err.message);
+      console.error("  - Error stack:", err.stack);
     }
 
     console.log(
@@ -3099,7 +3160,7 @@ const startImageGeneration = async (
     if (onAutoComplete) {
       console.log("✅ フル自動モード: 全工程完了を通知");
       try {
-        await onAutoComplete();
+        onAutoComplete();
         console.log("✅ onAutoComplete実行完了");
       } catch (error) {
         console.error("❌ onAutoComplete実行エラー:", error);

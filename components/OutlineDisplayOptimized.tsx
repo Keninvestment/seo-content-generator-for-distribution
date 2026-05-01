@@ -138,7 +138,7 @@ ${frequencyWordsText}
             <h3 className="text-lg font-bold text-blue-700">競合分析データを反映した最適化済み構成案</h3>
           </div>
           <div className="text-sm text-gray-600 space-y-1">
-            <p>• {outline.competitorResearch.validArticles.length}記事の分析結果を反映</p>
+            <p>• {outline.competitorResearch?.validArticles.length ?? 0}記事の分析結果を反映</p>
             <p>• 頻出単語TOP{Math.min(10, frequencyWords.length)}を見出しに配置</p>
             <p>• 上位記事の平均H2数・H3数に基づく構造設計</p>
             <p>• <span className="bg-blue-100 px-1 rounded">青色ハイライト</span>は頻出単語を示します</p>

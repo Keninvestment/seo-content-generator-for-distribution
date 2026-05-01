@@ -147,10 +147,10 @@ const App: React.FC = () => {
   }, [keywordQueue]);
 
   // キュー処理用のクリーンアップ関数をrefに保存
-  const cleanupQueueStateRef = useRef<() => void>();
+  const cleanupQueueStateRef = useRef<(() => void) | undefined>(undefined);
 
   // 画像生成エージェント用のフック
-  const imageAgentCloseIframeRef = useRef<() => void>();
+  const imageAgentCloseIframeRef = useRef<(() => void) | undefined>(undefined);
   const {
     embedState: imageAgentEmbedState,
     iframeRef: imageAgentIframeRef,
@@ -834,7 +834,7 @@ const App: React.FC = () => {
 
       const response = await fetch(`${apiUrl}/api/health`, {
         method: "GET",
-        timeout: 10000, // 10秒タイムアウト
+        signal: AbortSignal.timeout(10000),
       });
 
       const isHealthy = response.ok;
@@ -1151,7 +1151,9 @@ const App: React.FC = () => {
 
   // キーワードキューを順次処理する関数をrefに保存
   const processKeywordQueueRef =
-    useRef<(keywords: Array<{ row: number; keyword: string }>) => void>();
+    useRef<
+      ((keywords: Array<{ row: number; keyword: string }>) => void) | undefined
+    >(undefined);
 
   // processKeywordQueue関数を更新
   useEffect(() => {
@@ -1784,10 +1786,11 @@ const App: React.FC = () => {
               // 最終的な記事情報を取得
               const finalArticle = generatedArticle;
               const charCount = finalArticle?.plainText?.length || 0;
-              const h2Count = outlineV2?.sections?.length || 0;
+              const h2Count = outlineV2?.outline?.length || 0;
               const h3Count =
-                outlineV2?.sections?.reduce(
-                  (sum, section) => sum + (section.subheadings?.length || 0),
+                outlineV2?.outline?.reduce(
+                  (sum: number, section) =>
+                    sum + (section.subheadings?.length || 0),
                   0
                 ) || 0;
 

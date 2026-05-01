@@ -41,9 +41,13 @@ class SlackNotificationService {
   private useMention: boolean = true; // メンション使用フラグ
 
   constructor() {
-    this.enabled = import.meta.env.VITE_ENABLE_SLACK_NOTIFICATIONS === "true";
-    this.mentionUserId = import.meta.env.VITE_SLACK_MENTION_USER_ID || ""; // 環境変数から取得
-    this.useMention = import.meta.env.VITE_SLACK_USE_MENTION !== "false"; // デフォルトtrue
+    const vite =
+      typeof import.meta !== "undefined" && import.meta.env
+        ? import.meta.env
+        : ({} as Record<string, string | undefined>);
+    this.enabled = vite.VITE_ENABLE_SLACK_NOTIFICATIONS === "true";
+    this.mentionUserId = vite.VITE_SLACK_MENTION_USER_ID || ""; // 環境変数から取得
+    this.useMention = vite.VITE_SLACK_USE_MENTION !== "false"; // デフォルトtrue
   }
 
   // メンション文字列を取得
@@ -59,12 +63,19 @@ class SlackNotificationService {
     return "<!here>";
   }
 
+  private viteEnv(key: string): string | undefined {
+    if (typeof import.meta !== "undefined" && import.meta.env) {
+      return (import.meta.env as Record<string, string | undefined>)[key];
+    }
+    return undefined;
+  }
+
   private async send(message: SlackMessage): Promise<void> {
     if (!this.enabled) return;
 
     try {
       // サーバー経由でSlack通知を送信（CORS回避）
-      const apiKey = import.meta.env.VITE_INTERNAL_API_KEY;
+      const apiKey = this.viteEnv("VITE_INTERNAL_API_KEY");
       if (!apiKey) {
         console.warn(
           "⚠️ Slack通知: VITE_INTERNAL_API_KEY が未設定のため送信できません"
@@ -72,7 +83,7 @@ class SlackNotificationService {
         return;
       }
       const backendUrl =
-        import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+        this.viteEnv("VITE_BACKEND_URL") || "http://localhost:3001";
       const response = await fetch(`${backendUrl}/api/slack-notify`, {
         method: "POST",
         headers: {

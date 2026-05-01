@@ -183,7 +183,8 @@ ${outline.conclusion}
                 <ul className="mt-2 pl-6 list-disc list-outside space-y-1 marker:text-blue-400">
                   {section.subheadings.map((sub, subIndex) => (
                     <li key={subIndex}>
-                      <span className="font-semibold text-gray-600">H3:</span> {sub}
+                      <span className="font-semibold text-gray-600">H3:</span>{" "}
+                      {typeof sub === "string" ? sub : sub.text}
                     </li>
                   ))}
                 </ul>

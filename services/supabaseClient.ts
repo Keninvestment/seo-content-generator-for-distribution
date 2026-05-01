@@ -81,8 +81,8 @@ export interface Database {
  * 環境変数からURL・Keyを取得
  */
 function createSupabaseClient(): SupabaseClient<Database> | null {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY;
 
   // 環境変数が設定されていない場合はnullを返す（エラーハンドリング用）
   if (!supabaseUrl || !supabaseAnonKey) {

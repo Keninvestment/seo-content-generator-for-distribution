@@ -32,7 +32,7 @@ export async function runQualityCheck(
       // 簡易的な見出しチェック（明らかに問題がある場合のみ）
       let hasObviousProblem = false;
       outline.outline?.forEach(section => {
-        if (/問題点導入|リスク導入|課題導入/.test(section.title)) {
+        if (/問題点導入|リスク導入|課題導入/.test(section.heading)) {
           hasObviousProblem = true;
         }
       });
@@ -204,14 +204,21 @@ ${duplicateIssues.map(issue => `- ${issue}`).join('\n')}
       // 見出し修正のログ（Ver.2の構造に対応）
       if (fixedOutline.outline && Array.isArray(fixedOutline.outline)) {
         fixedOutline.outline.forEach((section, i) => {
-          if (outline.outline && outline.outline[i] && section.title !== outline.outline[i].title) {
-            console.log(`✏️ H2修正: ${section.title}`);
+          if (outline.outline && outline.outline[i] && section.heading !== outline.outline[i].heading) {
+            console.log(`✏️ H2修正: ${section.heading}`);
           }
-          
-          section.content?.forEach((sub, j) => {
-            if (outline.outline && outline.outline[i]?.content?.[j] && 
-                sub !== outline.outline[i].content![j]) {
-              console.log(`✏️ H3修正: ${sub}`);
+
+          section.subheadings?.forEach((sub, j) => {
+            const subText = typeof sub === 'string' ? sub : sub.text;
+            const origSub = outline.outline[i]?.subheadings?.[j];
+            const origText =
+              origSub === undefined
+                ? undefined
+                : typeof origSub === 'string'
+                  ? origSub
+                  : origSub.text;
+            if (origText !== undefined && subText !== origText) {
+              console.log(`✏️ H3修正: ${subText}`);
             }
           });
         });
@@ -293,16 +300,16 @@ function checkHeadingDuplication(outline: SeoOutlineV2): string[] {
   
   outline.outline?.forEach((section, sectionIndex) => {
     // H2を追加
-    if (section.title) {
+    if (section.heading) {
       allHeadings.push({
-        text: section.title,
+        text: section.heading,
         type: 'H2',
         location: `セクション${sectionIndex + 1}`
       });
     }
-    
-    // H3を追加（content配列形式）
-    section.content?.forEach((h3Text, subIndex) => {
+
+    section.subheadings?.forEach((sub, subIndex) => {
+      const h3Text = typeof sub === 'string' ? sub : sub.text;
       if (h3Text) {
         allHeadings.push({
           text: h3Text,

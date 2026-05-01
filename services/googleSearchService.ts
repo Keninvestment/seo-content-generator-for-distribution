@@ -22,11 +22,11 @@ export async function searchGoogle(
     console.log("🔍 Calling server Google search endpoint...");
 
     // 認証ヘッダーを取得
-    const apiKey = import.meta.env.VITE_INTERNAL_API_KEY;
+    const apiKey = import.meta.env?.VITE_INTERNAL_API_KEY;
 
     // サーバーのエンドポイントを呼び出す
     const backendUrl =
-      import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+      import.meta.env?.VITE_BACKEND_URL || "http://localhost:3001";
     const response = await fetch(`${backendUrl}/api/google-search`, {
       method: "POST",
       headers: {

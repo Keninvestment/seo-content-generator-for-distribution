@@ -15,6 +15,9 @@ interface ArticleDisplayProps {
     title: string;
     content: string;
     keyword: string;
+    metaDescription?: string;
+    slug?: string;
+    isTestMode?: boolean;
     autoMode?: boolean;
   }) => void;
 }

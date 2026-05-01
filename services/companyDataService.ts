@@ -180,6 +180,10 @@ class CompanyDataService {
         writingPattern: /原稿(執筆|作成).*?(\d+時間).*?(\d+秒|\d+分)/,
         // SNS運用パターン
         snsPattern: /(SNS|imp|インプレッション).*?(自動化|削減)/,
+        automation:
+          /(自動化|RPA|ワークフロー).*?[→から].*?(削減|短縮|改善)/,
+        percentageImprovement:
+          /(\d+(?:\.\d+)?%)(?:\s*[の]?)?(?:向上|改善|削減|短縮|アップ)/,
       };
 
       // 時間短縮の実績を探す

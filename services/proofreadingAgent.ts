@@ -7,7 +7,8 @@ import type {
   ProofreadingConfig,
   ProofreadingStatistics
 } from '../types/proofreading';
-import type { SeoOutline } from '../types';
+import type { SeoOutline, SeoOutlineV2, FrequencyWord } from '../types';
+import { isSeoOutlineV2 } from '../types';
 import { verifyArticleFacts } from './factCheckService';
 import type { WritingRegulation } from './articleWriterService';
 
@@ -37,7 +38,7 @@ const DEFAULT_CONFIG: ProofreadingConfig = {
  */
 export async function proofreadArticle(
   htmlContent: string,
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   regulation: WritingRegulation,
   config: Partial<ProofreadingConfig> = {},
   temperature?: number
@@ -218,7 +219,7 @@ function checkStructuralViolations(
  */
 async function checkContentViolations(
   htmlContent: string,
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   config: ProofreadingConfig
 ): Promise<Violation[]> {
   const violations: Violation[] = [];
@@ -276,14 +277,15 @@ async function checkContentViolations(
   // 3. 頻出単語の使用チェック
   if (config.enabledCategories.includes('frequency') && 
       config.checkFrequencyWords && 
+      !isSeoOutlineV2(outline) &&
       outline.competitorResearch?.frequencyWords) {
     
     const topWords = outline.competitorResearch.frequencyWords
       .slice(0, 10)
-      .map(w => w.word);
-    
-    const missingWords = topWords.filter(word => 
-      !plainText.includes(word)
+      .map((w: FrequencyWord) => w.word);
+
+    const missingWords = topWords.filter(
+      (word: string) => !plainText.includes(word)
     );
     
     if (missingWords.length > 5) {
@@ -310,7 +312,7 @@ async function checkContentViolations(
  */
 async function checkWithGeminiAPI(
   htmlContent: string,
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   regulation: WritingRegulation,
   config: ProofreadingConfig,
   temperature?: number
@@ -491,7 +493,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 export async function autoFixArticle(
   htmlContent: string,
   violations: Violation[],
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   regulation: WritingRegulation,
   maxAttempts: number = 3
 ): Promise<{
@@ -637,7 +639,7 @@ function hasComplexViolations(violations: Violation[]): boolean {
 export async function autoFixArticleBySection(
   htmlContent: string,
   violations: Violation[],
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   regulation: WritingRegulation,
   maxAttempts: number = 3
 ): Promise<{
@@ -673,8 +675,11 @@ export async function autoFixArticleBySection(
     const sectionViolations = violations.filter(v => {
       // セクション内のテキストが違反に含まれているかチェック
       const plainText = sectionContent.replace(/<[^>]*>/g, '');
-      return plainText.includes(v.actualText) || 
-             (v.location && typeof v.location === 'string' && v.location.includes(sectionHeading));
+      return (
+        plainText.includes(v.actualText) ||
+        (typeof v.location?.sectionHeading === "string" &&
+          v.location.sectionHeading.includes(sectionHeading))
+      );
     });
     
     if (sectionViolations.length === 0) {
@@ -831,7 +836,7 @@ ${complexViolations.map(v => `
 async function applyAIFixes(
   content: string,
   violations: Violation[],
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   temperature: number
 ): Promise<string> {
   const model = genAI.getGenerativeModel({

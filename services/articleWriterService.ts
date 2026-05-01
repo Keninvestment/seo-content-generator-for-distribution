@@ -2,7 +2,9 @@
 // 構成案から実際の記事本文を生成
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { SeoOutline, CompetitorResearchResult, FrequencyWord, SubheadingWithNote } from '../types';
+import type { SeoOutline, CompetitorResearchResult, FrequencyWord, SubheadingWithNote, OutlineSection, OutlineSectionV2 } from '../types';
+
+type OutlineSectionUnion = OutlineSection | OutlineSectionV2;
 
 // Viteの環境変数を使用（フロントエンドで実行されるため）
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.GEMINI_API_KEY;
@@ -32,7 +34,7 @@ function calculateSectionWordCounts(outline: SeoOutline | any): Map<number, numb
   const totalWords = outline.characterCountAnalysis?.average || 
                      outline.competitorComparison?.recommendedCharCount ||
                      5000;
-  const sections = outline.outline;
+  const sections: OutlineSectionUnion[] = outline.outline;
   const sectionCount = sections.length;
   
   // リード文は300-500文字程度（全体の2-3%、最大500文字）
@@ -53,7 +55,7 @@ function calculateSectionWordCounts(outline: SeoOutline | any): Map<number, numb
   const wordsPerSection = Math.round(remainingWords / sectionCount);
   
   const distribution = new Map<number, number>();
-  sections.forEach((_, index) => {
+  sections.forEach((_: OutlineSectionUnion, index: number) => {
     // まとめセクションは少なめに
     if (sections[index].heading.includes('まとめ')) {
       distribution.set(index, conclusionWords);
@@ -148,13 +150,13 @@ export async function generateArticle(
 ${outline.targetAudience}
 
 【記事構成（必ずこの構成に従ってください）】
-${outline.outline.map((section, index) => {
+${outline.outline.map((section: OutlineSectionUnion, index: number) => {
   let sectionText = `${section.heading}（目安: ${sectionWordCounts.get(index)}文字）\n`;
   
   // H3がある場合はH2直下の導入文について指示
   if (section.subheadings && section.subheadings.length > 0) {
     sectionText += `   📝 H2直下導入文: 100-200文字でセクション概要と価値を説明（他のH2と言い回しを変える）\n`;
-    sectionText += section.subheadings.map(sub => {
+    sectionText += section.subheadings.map((sub: string | SubheadingWithNote) => {
       if (typeof sub === 'string') {
         return `   - ${sub}`;
       } else {
@@ -597,7 +599,7 @@ ${missingSectionsData.map((section, index) => {
   let sectionText = `${section.heading}（目安: ${wordCount}文字）\n`;
   
   if (section.subheadings && section.subheadings.length > 0) {
-    sectionText += section.subheadings.map(sub => {
+    sectionText += section.subheadings.map((sub: string | SubheadingWithNote) => {
       if (typeof sub === 'string') {
         return `   - ${sub}`;
       } else {

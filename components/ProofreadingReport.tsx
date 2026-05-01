@@ -17,7 +17,10 @@ const CATEGORY_CONFIG: Record<ViolationCategory, { label: string; icon: string; 
   readability: { label: '読みやすさ', icon: '👁️', color: 'text-green-500' },
   forbidden_tags: { label: '禁止タグ', icon: '⛔', color: 'text-red-700' },
   indentation: { label: 'インデント', icon: '↔️', color: 'text-gray-500' },
-  numbering: { label: '番号付け', icon: '🔢', color: 'text-blue-600' }
+  numbering: { label: '番号付け', icon: '🔢', color: 'text-blue-600' },
+  paragraph: { label: '段落', icon: '¶', color: 'text-gray-600' },
+  h2_intro: { label: 'H2導入', icon: '📎', color: 'text-amber-600' },
+  fact_accuracy: { label: '事実確認', icon: '✓', color: 'text-red-600' },
 };
 
 // 重要度別の表示設定
