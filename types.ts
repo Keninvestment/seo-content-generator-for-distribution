@@ -132,6 +132,23 @@ export interface SeoOutline {
   keywords: string[];
   characterCountAnalysis: CharacterCountAnalysis;
   competitorResearch?: CompetitorResearchResult; // 競合分析結果を追加
+  /** Ver.2 との表示互換（任意） */
+  metaDescription?: string;
+}
+
+/** Ver.2 構成かどうか */
+export function isSeoOutlineV2(
+  o: SeoOutline | SeoOutlineV2
+): o is SeoOutlineV2 {
+  return "introductions" in o;
+}
+
+export function getOutlineMetaDescription(
+  o: SeoOutline | SeoOutlineV2,
+  keyword: string
+): string {
+  if (isSeoOutlineV2(o)) return o.metaDescription;
+  return o.metaDescription ?? `${keyword}に関する詳細な解説記事です。`;
 }
 
 export interface GroundingChunk {

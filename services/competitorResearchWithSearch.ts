@@ -97,7 +97,7 @@ Return ONLY valid JSON in this exact format (no comments):
         temperature: 1.0, // Recommended for search grounding
         maxOutputTokens: 8192,
       },
-      tools: [{ googleSearch: {} }], // Enable Google Search
+      tools: [{ googleSearchRetrieval: {} }], // Enable Google Search
     });
 
     const result = await model.generateContent(prompt);

@@ -24,6 +24,16 @@ function calculateAveragesExcludingNoise(
   originalAverageH2: number;
   originalAverageH3: number;
 } {
+  if (!articles.length) {
+    return {
+      averageH2Count: 6,
+      averageH3Count: 10,
+      excludedArticles: [],
+      originalAverageH2: 6,
+      originalAverageH3: 10,
+    };
+  }
+
   // Step 1: 全記事での平均値を計算（除外前）
   const originalH2Avg = articles.reduce((sum, a) => sum + a.headingStructure.h2Items.length, 0) / articles.length;
   const originalH3Avg = articles.reduce((sum, a) => 
@@ -89,7 +99,8 @@ function calculateAveragesExcludingNoise(
   };
 }
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const apiKey =
+  process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY || "";
 if (!apiKey) {
     throw new Error("GEMINI_API_KEY not set.");
 }
@@ -350,7 +361,7 @@ export function checkOutline(
         errors.push({
           field: `outline[${faqSectionIndex}].heading`,
           message: 'FAQ見出しが短すぎます。キーワードを含む具体的な見出しにしてください',
-          severity: 'high'
+          severity: 'error'
         });
       }
 
@@ -360,7 +371,7 @@ export function checkOutline(
         errors.push({
           field: `outline[${faqSectionIndex}].heading`,
           message: 'FAQ見出しが不自然です。問題・リスク系のキーワードに「導入」を付けないでください',
-          severity: 'high'
+          severity: 'error'
         });
         const cleanKeyword = (keyword || '').replace(/\s+/g, '');
         suggestions.push(`FAQ見出しを「${cleanKeyword}に関するよくある質問」に変更することを推奨`);
@@ -371,7 +382,7 @@ export function checkOutline(
         errors.push({
           field: `outline[${faqSectionIndex}].heading`,
           message: 'FAQ見出しが意味不明です。自然な日本語に修正してください',
-          severity: 'critical'
+          severity: 'error'
         });
       }
 
@@ -517,7 +528,8 @@ export async function fixOutline(
   checkResult: OutlineCheckResult,
   keyword: string,
   competitorResearch: CompetitorResearchResult,
-  attemptNumber: number = 0
+  attemptNumber: number = 0,
+  orchestratorPrimaryContext: string = ""
 ): Promise<SeoOutlineV2> {
   // エラーがない場合はそのまま返す
   if (checkResult.isValid && checkResult.errors.length === 0) {
@@ -617,7 +629,8 @@ ${h3Shortage ? `
         keyword,
         competitorResearch,
         true,
-        true
+        true,
+        orchestratorPrimaryContext
       );
       
       return regeneratedOutline;
@@ -636,7 +649,8 @@ ${h3Shortage ? `
 export async function checkAndFixOutline(
   outline: SeoOutlineV2,
   keyword: string,
-  competitorResearch: CompetitorResearchResult
+  competitorResearch: CompetitorResearchResult,
+  orchestratorPrimaryContext: string = ""
 ): Promise<{
   finalOutline: SeoOutlineV2;
   checkResult: OutlineCheckResult;
@@ -674,7 +688,14 @@ export async function checkAndFixOutline(
       console.log(`${attempt}回目の修正後もエラーが残っています。再修正を試みます...`);
     }
     
-    currentOutline = await fixOutline(currentOutline, checkResult, keyword, competitorResearch, attempt);
+    currentOutline = await fixOutline(
+      currentOutline,
+      checkResult,
+      keyword,
+      competitorResearch,
+      attempt,
+      orchestratorPrimaryContext
+    );
     wasFixed = true;
   }
   

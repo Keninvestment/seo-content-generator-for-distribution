@@ -108,7 +108,7 @@ export const generateCompetitorResearch = async (
       model: "gemini-2.5-flash",
       tools: [
         {
-          googleSearch: {},
+          googleSearchRetrieval: {},
         },
       ],
       generationConfig: {

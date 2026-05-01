@@ -2,7 +2,9 @@
 // 各見出しを個別に生成し、文字数を確実にコントロール
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { SeoOutline, FrequencyWord, SubheadingWithNote } from '../types';
+import type { SeoOutline, SeoOutlineV2, FrequencyWord, SubheadingWithNote, OutlineSection, OutlineSectionV2 } from '../types';
+import { isSeoOutlineV2 } from '../types';
+import type { ProofreadingReport } from '../types/proofreading';
 import type { WritingRegulation } from './articleWriterService';
 import { proofreadArticle, autoFixArticle, autoFixArticleBySection } from './proofreadingAgent';
 import { checkFactsForSection, type FactInfo } from './factCheckService';
@@ -115,13 +117,10 @@ export function calculateDetailedCharDistribution(
   const bodyCharCount = totalCharCount - introCharCount - conclusionCharCount;
   
   // 各セクションの重要度を計算
-  // Ver.1とVer.2の両方に対応
-  const sections = outline.outline || outline.sections;
-  if (!sections) {
-    throw new Error('構成案にセクションデータがありません');
-  }
+// Ver.1とVer.2の両方に対応
+  const sections: (OutlineSection | OutlineSectionV2)[] = outline.outline;
   
-  const sectionImportances: SectionImportance[] = sections.map((section, index) => ({
+  const sectionImportances: SectionImportance[] = sections.map((section: OutlineSection | OutlineSectionV2, index: number) => ({
     keyword,
     heading: section.heading,
     importance: calculateSectionImportance(
@@ -136,7 +135,7 @@ export function calculateDetailedCharDistribution(
   const totalImportance = sectionImportances.reduce((sum, s) => sum + s.importance, 0);
   
   // 各セクションに文字数を配分
-  sections.forEach((section, index) => {
+  sections.forEach((section: OutlineSection | OutlineSectionV2, index: number) => {
     const importance = sectionImportances[index].importance;
     const sectionCharCount = Math.round((bodyCharCount * importance) / totalImportance);
     
@@ -152,7 +151,7 @@ export function calculateDetailedCharDistribution(
       distribution.set(`h2_${index}_intro`, Math.round(baseH3CharCount * 0.5));
       
       // 各H3に配分
-      section.subheadings.forEach((subheading, h3Index) => {
+      section.subheadings.forEach((subheading: string | SubheadingWithNote, h3Index: number) => {
         const h3Text = typeof subheading === 'string' ? subheading : subheading.text;
         const h3CharCount = Math.round(baseH3CharCount * 1.2); // H3は少し多めに
         distribution.set(`h3_${index}_${h3Index}_${h3Text}`, h3CharCount);
@@ -463,7 +462,7 @@ ${existingHtml}
 async function generateIntroduction(
   keyword: string,
   targetCharCount: number,
-  outline: SeoOutline
+  outline: SeoOutline | SeoOutlineV2
 ): Promise<string> {
   const prompt = `
 「${keyword}」についての記事のリード文を執筆してください。
@@ -472,7 +471,11 @@ async function generateIntroduction(
 ${outline.targetAudience}
 
 【記事の概要】
-${outline.introduction || (outline.introductions?.conclusionFirst || outline.introductions?.empathy) || ''}
+${
+    isSeoOutlineV2(outline)
+      ? `${outline.introductions.conclusionFirst}\n${outline.introductions.empathy}`
+      : outline.introduction
+  }
 
 【文字数】
 ${targetCharCount}文字（厳守）
@@ -565,6 +568,8 @@ export async function generateArticleBySection(
     targetChars: number;
     actualChars: number;
   }[];
+  proofreadingReport?: ProofreadingReport;
+  warning?: string;
 }> {
   console.log('📝 セクション単位での記事生成を開始');
   
@@ -606,8 +611,8 @@ export async function generateArticleBySection(
   
   // 2. 各セクションを順次生成
   // Ver.1とVer.2の両方に対応
-  const allSections = outline.outline || outline.sections;
-  if (!allSections) {
+  const allSections = outline.outline;
+  if (!allSections?.length) {
     throw new Error('構成案にセクションデータがありません');
   }
   
@@ -671,7 +676,7 @@ export async function generateArticleBySection(
   
   // 5. タイトルとメタディスクリプションを生成
   const title = `【2025年最新】${keyword}完全ガイド｜${allSections[0].heading}から${allSections[allSections.length - 1].heading}まで徹底解説`;
-  const metaDescription = `${keyword}について、${allSections.map(s => s.heading).slice(0, 3).join('、')}など、初心者にもわかりやすく解説。2025年最新情報を網羅した完全ガイドです。`;
+  const metaDescription = `${keyword}について、${allSections.map((s: OutlineSection | OutlineSectionV2) => s.heading).slice(0, 3).join('、')}など、初心者にもわかりやすく解説。2025年最新情報を網羅した完全ガイドです。`;
   
   // プレーンテキスト版を生成
   const plainText = htmlContent

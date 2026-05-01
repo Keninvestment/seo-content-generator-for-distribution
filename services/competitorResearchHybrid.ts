@@ -82,7 +82,7 @@ JSONで返してください：
   try {
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
-      tools: [{ googleSearch: {} }],
+      tools: [{ googleSearchRetrieval: {} }],
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 8192,

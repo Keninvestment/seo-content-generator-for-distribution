@@ -8,12 +8,42 @@ import {
 } from "./puppeteerScrapingService";
 import { analyzeWordFrequency } from "./wordFrequencyService";
 
-const apiKey =
-  import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-if (!apiKey) {
-  throw new Error("GEMINI_API_KEY not set.");
+let _genAI: GoogleGenerativeAI | null = null;
+function getGenAI(): GoogleGenerativeAI {
+  if (!_genAI) {
+    const key =
+      process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY;
+    if (!key) {
+      throw new Error("GEMINI_API_KEY not set.");
+    }
+    _genAI = new GoogleGenerativeAI(key);
+  }
+  return _genAI;
 }
-const genAI = new GoogleGenerativeAI(apiKey);
+
+function isBrowserMockCompetitor(): boolean {
+  if (typeof window === "undefined" || !window.location) {
+    return false;
+  }
+  try {
+    return new URLSearchParams(window.location.search).get("mock") === "true";
+  } catch {
+    return false;
+  }
+}
+
+function isHeadlessMockCompetitor(): boolean {
+  const v = process.env.SEO_MOCK_COMPETITOR;
+  return v === "1" || v?.toLowerCase() === "true";
+}
+
+function isArgvMockCompetitorFlag(): boolean {
+  try {
+    return process.argv.includes("--mock-competitor");
+  } catch {
+    return false;
+  }
+}
 
 // JSON文字列クリーニング
 function cleanJsonString(str: string): string {
@@ -39,6 +69,18 @@ function cleanJsonString(str: string): string {
   return str.trim();
 }
 
+function getMockCompetitorResearch(keyword: string): CompetitorResearchResult {
+  return {
+    keyword,
+    analyzedAt: new Date().toISOString(),
+    totalArticlesScanned: 0,
+    validArticles: [],
+    excludedCount: 0,
+    commonTopics: [],
+    recommendedWordCount: { min: 4000, max: 12000, optimal: 8000 },
+  };
+}
+
 // タイトルから実際のURLを推測（使わないようにする）
 function guessUrlFromTitle(title: string): string {
   // この関数は基本的に使わない（URLが取得できない場合のみ）
@@ -52,40 +94,18 @@ export const generateCompetitorResearch = async (
 ): Promise<CompetitorResearchResult> => {
   console.log("🔍 Starting competitor research for:", keyword);
 
-  // URLパラメータでモックモードをチェック
-  const urlParams = new URLSearchParams(window.location.search);
-  const useMockData = urlParams.get("mock") === "true";
+  const useMockData =
+    isBrowserMockCompetitor() ||
+    isHeadlessMockCompetitor() ||
+    isArgvMockCompetitorFlag();
 
   if (useMockData) {
-    console.log("🎭 モックモード: 固定データを返します");
+    console.log("🎭 モックモード: Phase 0 baseline と同型の固定競合結果を返します");
     return getMockCompetitorResearch(keyword);
   }
 
   // Google Search APIはサーバー側で設定を確認するため、クライアント側では常にtrue
   const canUseGoogleSearch = true; // サーバー側が判断
-
-  // Step 1: Google検索で上位サイトを取得
-  const searchPrompt = `
-「${keyword}」でGoogle検索を実行し、上位20サイトの情報を取得してください。
-
-取得する情報：
-- title: ページのタイトル（完全なもの）
-- snippet: 検索結果の説明文
-- domain: サイトのドメイン名（分かる場合）
-
-ショッピングサイトやPDFは除外してください。
-
-JSON形式で返してください（必ず15件以上）：
-{
-  "searchResults": [
-    {
-      "rank": 1,
-      "title": "SEO対策とは？初心者でもわかる基本から実践まで｜サクラサクマーケティング",
-      "snippet": "SEO対策の基本から実践的な方法まで...",
-      "domain": "サクラサクマーケティング"
-    }
-  ]
-}`;
 
   try {
     let searchResults: any[] = [];
@@ -148,82 +168,6 @@ JSON形式で返してください（必ず15件以上）：
       );
     }
 
-    // Geminiフォールバックは削除（以下のコードは使用しない）
-    if (false) {
-      console.log("📡 Using Gemini search (URLs may not be exact)...");
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        tools: [{ googleSearch: {} }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 16384, // 増やして不完全なJSONを防ぐ
-        },
-      });
-
-      const searchResult = await model.generateContent(searchPrompt);
-      const searchText = searchResult.response.text();
-
-      // JSONを抽出
-      let searchData;
-      try {
-        // 複数のJSON抽出パターンを試す
-        let jsonMatch = searchText.match(/\{[\s\S]*\}/);
-
-        // より厳密なパターンを試す（配列を含む場合）
-        if (!jsonMatch) {
-          jsonMatch = searchText.match(
-            /\{\s*"searchResults"\s*:\s*\[[\s\S]*?\]\s*\}/
-          );
-        }
-
-        if (jsonMatch) {
-          const cleanedJson = cleanJsonString(jsonMatch[0]);
-          searchData = JSON.parse(cleanedJson);
-        } else {
-          console.warn("JSON extraction failed, using empty results");
-          searchData = { searchResults: [] };
-        }
-      } catch (e) {
-        console.error("Failed to parse search results:", e.message);
-        console.error(
-          "Raw text (first 500 chars):",
-          searchText.substring(0, 500)
-        );
-
-        // フォールバック: シンプルなテキスト解析
-        try {
-          const results = [];
-          const lines = searchText.split("\n");
-          let currentResult = null;
-
-          for (const line of lines) {
-            if (line.includes('"rank":')) {
-              if (currentResult) results.push(currentResult);
-              currentResult = {
-                rank: results.length + 1,
-                title: "",
-                snippet: "",
-              };
-            } else if (currentResult && line.includes('"title":')) {
-              const titleMatch = line.match(/"title"\s*:\s*"([^"]*)"/);
-              if (titleMatch) currentResult.title = titleMatch[1];
-            } else if (currentResult && line.includes('"snippet":')) {
-              const snippetMatch = line.match(/"snippet"\s*:\s*"([^"]*)"/);
-              if (snippetMatch) currentResult.snippet = snippetMatch[1];
-            }
-          }
-          if (currentResult) results.push(currentResult);
-
-          searchData = { searchResults: results };
-          console.log(`Fallback parsing recovered ${results.length} results`);
-        } catch (fallbackError) {
-          console.error("Fallback parsing also failed");
-          searchData = { searchResults: [] };
-        }
-      }
-
-      searchResults = searchData.searchResults || [];
-    }
     console.log(`✅ Found ${searchResults.length} search results`);
 
     // 検索結果が少ない場合の警告
@@ -336,11 +280,12 @@ JSON形式で返してください（必ず15件以上）：
             "Puppeteerによるページ取得に失敗しました。上記の対処法を確認してください。"
           );
         }
-      } catch (error) {
+      } catch (error: unknown) {
         console.error("❌ Puppeteer error:", error);
         console.error("🔧 対処法:");
         console.error("   1. スクレイピングサーバーを再起動: npm run server");
-        console.error("   2. エラーメッセージを確認: ", error.message);
+        const msg = error instanceof Error ? error.message : String(error);
+        console.error("   2. エラーメッセージを確認: ", msg);
 
         // エラーを再投げして、上位で適切に処理させる
         throw error;
@@ -447,7 +392,7 @@ JSONで返してください：
 }`;
 
     // Geminiモデルを初期化
-    const topicsModel = genAI.getGenerativeModel({
+    const topicsModel = getGenAI().getGenerativeModel({
       model: "gemini-2.5-flash",
       generationConfig: {
         temperature: 0.7,
@@ -471,7 +416,7 @@ JSONで返してください：
         const topicsData = JSON.parse(cleanJsonString(topicsMatch[0]));
         commonTopics = topicsData.commonTopics || commonTopics;
       }
-    } catch (e) {
+    } catch (_e: unknown) {
       console.error("Failed to parse topics");
     }
 

@@ -18,7 +18,8 @@ import { generateTitleHook, generateFullTitle } from '../utils/titleHookGenerato
 // import { curriculumDataService } from './curriculumDataService';
 import { getContextForKeywords, isSupabaseAvailable } from './primaryDataService';
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const apiKey =
+  process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY || "";
 if (!apiKey) {
     throw new Error("GEMINI_API_KEY not set.");
 }
@@ -78,6 +79,10 @@ function detectCompetitorFAQ(articles: ArticleAnalysis[]): {
   faqCount: number;
   faqPercentage: number;
 } {
+  if (!articles.length) {
+    return { hasFAQ: false, faqCount: 0, faqPercentage: 0 };
+  }
+
   const faqPatterns = /FAQ|よくある質問|Q&A|疑問|質問と回答|お問い合わせ/i;
   
   const articlesWithFAQ = articles.filter(article => {
@@ -118,6 +123,24 @@ function calculateAveragesExcludingNoise(
   adjustedH2Count: number;  // 調整後のH2数
   adjustedH3Count: number;  // 調整後のH3数
 } {
+  if (!articles.length) {
+    console.warn(
+      "⚠️ 競合 validArticles が0件です。構成最適化はデフォルトH2/H3目安で継続します（#1512 / モック競合）。"
+    );
+    return {
+      averageH2Count: 6,
+      averageH3Count: 10,
+      averageCharCount: 5000,
+      excludedArticles: [],
+      originalAverageH2: 6,
+      originalAverageH3: 10,
+      filteredArticles: [],
+      faqDetection: { hasFAQ: false, faqCount: 0, faqPercentage: 0 },
+      adjustedH2Count: 6,
+      adjustedH3Count: 10,
+    };
+  }
+
   // Step 1: 全記事での平均値を計算（除外前）
   const originalH2Avg = articles.reduce((sum, a) => sum + a.headingStructure.h2Items.length, 0) / articles.length;
   const originalH3Avg = articles.reduce((sum, a) => 
@@ -401,7 +424,8 @@ export async function generateOutlineV2(
   keyword: string,
   competitorResearch: CompetitorResearchResult,
   includeImages: boolean = true,
-  generateTwoIntroductions: boolean = true // 導入文を2パターン生成するか
+  generateTwoIntroductions: boolean = true, // 導入文を2パターン生成するか
+  orchestratorPrimaryContext: string = ""
 ): Promise<SeoOutlineV2> {
   const searchIntent = classifySearchIntent(keyword);
   const validArticles = competitorResearch.validArticles;
@@ -462,6 +486,19 @@ export async function generateOutlineV2(
       console.log('[OutlineV2] 関連する一次情報が見つかりませんでした');
     }
   }
+
+  const orchestratorPc = orchestratorPrimaryContext.trim();
+  if (orchestratorPc) {
+    console.log('[OutlineV2] オーケストレータ一次情報コンテキストを構成にマージします');
+  }
+  const mergedPrimaryBlocks: string[] = [];
+  if (primaryDataContext) mergedPrimaryBlocks.push(primaryDataContext);
+  if (orchestratorPc) {
+    mergedPrimaryBlocks.push(
+      `【オーケストレータ注入（processed_tldv_ids / Agent8 実行ディレクトリ由来。要検証前提）】\n${orchestratorPc}`
+    );
+  }
+  const mergedPrimaryDataContext = mergedPrimaryBlocks.join("\n\n---\n\n");
 
   const prompt = `
 あなたはSEOに精通したコンテンツプランナーです。
@@ -607,16 +644,17 @@ ${(() => {
 })()}
 
 
-${primaryDataContext ? `
-【補足：一次情報データベースからの関連情報】
-以下は、社内データベースから取得した関連情報です。構成案に組み込める場合は活用してください（必須ではありません）：
+${mergedPrimaryDataContext ? `
+【補足：一次情報（社内データベース + オーケストレータ）からの関連情報】
+以下は、構成案に組み込める場合のみ活用してください（必須ではありません）。
 
-${primaryDataContext}
+${mergedPrimaryDataContext}
 
 注意事項：
-- 上記の一次情報は信頼できる社内データですが、SEO検索意図を最優先してください
-- 関連性が低い場合は無理に使用せず、検索意図に沿った構成を優先
-- 使用する場合は、H2やH3の執筆メモに「一次情報より」と明記
+- SEO検索意図と競合分析を最優先する
+- 関連性が低い場合は無理に使用しない
+- 一次情報由来の細部は公開前に人間確認を前提とする
+- 記事側で活用する際は、h2やh3のアウトラインメモに由来を明示する
 ` : ''}
 
 【要件】

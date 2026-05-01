@@ -26,17 +26,22 @@
     "noEmit": true
   },
   "include": [
+    "vite-env.d.ts",
     "src/**/*",
     "*.ts",
     "*.tsx",
     "components/**/*",
     "services/**/*",
     "utils/**/*",
-    "types.ts"
+    "types.ts",
+    "scripts/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "server"
+    "server",
+    "components/TextCheckPage.tsx",
+    "components/QuickAutoTest.tsx",
+    "components/TestSourceEnhancement.tsx"
   ]
 }

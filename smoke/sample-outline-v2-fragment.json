@@ -1,0 +1,39 @@
+{
+  "keyword": "スモークテスト SEO",
+  "outline": {
+    "title": "スモークテスト SEO の最小サンプル",
+    "metaDescription": "スモークテスト用の短いメタディスクリプションです。キーワードを含みます。",
+    "introductions": {
+      "conclusionFirst": "結論: これはフィクスチャ用の一文です。",
+      "empathy": "読者の悩みを仮置きした一文です。"
+    },
+    "targetAudience": "スモークテスト実施者",
+    "outline": [
+      {
+        "heading": "見出しH2サンプル",
+        "subheadings": [
+          {
+            "text": "H3サンプル1",
+            "writingNote": "執筆メモ"
+          }
+        ],
+        "writingNote": "H2メモ",
+        "imageSuggestion": "任意の画像提案"
+      }
+    ],
+    "conclusion": "まとめのサンプル文です。",
+    "keywords": ["スモーク", "SEO"],
+    "competitorComparison": {
+      "averageH2Count": 5,
+      "averageH3Count": 8,
+      "ourH2Count": 1,
+      "ourH3Count": 1,
+      "freshnessRisks": [],
+      "differentiators": ["baseline用フィクスチャ"]
+    },
+    "searchIntent": {
+      "primary": "KNOW",
+      "secondary": "DO"
+    }
+  }
+}

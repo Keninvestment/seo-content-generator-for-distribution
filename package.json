@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "server": "cd server && node scraping-server.js",
+    "orchestrator-seo": "tsx scripts/orchestrator-seo-one-shot.ts",
+    "e2e:human-gate": "tsx scripts/e2e-seo-article-human-gate.ts",
+    "e2e:batch-reflection": "tsx scripts/e2e-batch-articles-reflection.ts",
     "start": "npm run server & npm run dev"
   },
   "dependencies": {

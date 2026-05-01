@@ -2,15 +2,33 @@
 // 指示タグシステム、厳密な文字数管理、構造化されたセクション構成を実装
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import type { SeoOutline, FrequencyWord } from '../types';
+import type { SeoOutline, SeoOutlineV2, FrequencyWord } from '../types';
+import { isSeoOutlineV2 } from '../types';
 import type { WritingRegulation } from './articleWriterService';
 import { getCompanyInfo, generateCompanyContext } from './companyService';
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const apiKey =
+  process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY || "";
 if (!apiKey) {
     throw new Error("GEMINI_API_KEY not set.");
 }
 const genAI = new GoogleGenerativeAI(apiKey);
+
+function outlineIntroductionForPrompt(o: SeoOutline | SeoOutlineV2): string {
+  if (isSeoOutlineV2(o)) {
+    return [o.introductions.conclusionFirst, o.introductions.empathy]
+      .filter(Boolean)
+      .join("\n");
+  }
+  return o.introduction;
+}
+
+function frequencyWordsForOutline(
+  o: SeoOutline | SeoOutlineV2
+): FrequencyWord[] | undefined {
+  if (isSeoOutlineV2(o)) return undefined;
+  return o.competitorResearch?.frequencyWords;
+}
 
 // Ver.2用の拡張レギュレーション
 export interface WritingRegulationV2 extends WritingRegulation {
@@ -18,6 +36,8 @@ export interface WritingRegulationV2 extends WritingRegulation {
   strictBulletPoints?: boolean; // 箇条書き制限を適用するか
   useLeadTemplate?: boolean; // リード文テンプレートを使用するか
   addSectionSummary?: boolean; // 各H2末尾に要点まとめを追加するか
+  /** オーケストレータが注入した KEN 一次情報（Markdown またはプレーン） */
+  externalPrimaryContext?: string;
 }
 
 // 指示タグの種類
@@ -60,7 +80,7 @@ export function countCharactersExcludingTags(text: string): number {
 
 // セクションごとの文字数配分を計算
 function calculateSectionDistribution(
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   totalCharCount: number
 ): Map<string, number> {
   const distribution = new Map<string, number>();
@@ -96,7 +116,7 @@ function calculateSectionDistribution(
 // リード文をテンプレートで生成
 async function generateLeadWithTemplate(
   keyword: string,
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   targetCharCount: number
 ): Promise<string> {
   const prompt = `
@@ -117,7 +137,7 @@ async function generateLeadWithTemplate(
 ${outline.targetAudience}
 
 【記事概要】
-${outline.introduction}
+${outlineIntroductionForPrompt(outline)}
 
 HTMLのpタグで出力してください。
 `;
@@ -168,6 +188,13 @@ function generateSectionSummary(sectionContent: string, heading: string): string
   return summary;
 }
 
+function clipKenPrimaryBlock(s: string, maxChars: number): string {
+  const t = s.trim();
+  if (!t.length) return "";
+  if (t.length <= maxChars) return t;
+  return `${t.slice(0, Math.max(0, maxChars - 6))}\n…（省略）`;
+}
+
 // 指示タグをHTMLコメントとして挿入
 function insertInstructionTags(content: string, tags: InstructionTags): string {
   let result = content;
@@ -188,7 +215,7 @@ function insertInstructionTags(content: string, tags: InstructionTags): string {
 
 // Ver.2メイン生成関数
 export async function generateArticleV2(
-  outline: SeoOutline,
+  outline: SeoOutline | SeoOutlineV2,
   keyword: string,
   regulation: WritingRegulationV2 = {}
 ): Promise<{
@@ -200,7 +227,11 @@ export async function generateArticleV2(
 }> {
   const targetCharCount = outline.characterCountAnalysis?.average || 30000;
   const charDistribution = calculateSectionDistribution(outline, targetCharCount);
-  
+  const kenSnip = clipKenPrimaryBlock(regulation.externalPrimaryContext || "", 8000);
+  const kenSectionPrelude = kenSnip
+    ? `【参考: KEN社内・一次情報（未検証の数値や固有名は一般化または省略）】\n${kenSnip}\n\n`
+    : "";
+
   console.log('📝 Ver.2記事生成開始:', {
     keyword,
     targetCharCount,
@@ -210,7 +241,9 @@ export async function generateArticleV2(
   
   // タイトルとメタディスクリプション
   const title = `【2025年最新】${keyword}完全ガイド｜初心者にもわかりやすく解説`;
-  const metaDescription = `${keyword}について、基本から実践まで徹底解説。${outline.outline[0].heading}など、初心者にも分かりやすく説明します。`;
+  const metaDescription = `${keyword}について、基本から実践まで徹底解説。${
+    outline.outline[0]?.heading ?? keyword
+  }など、初心者にも分かりやすく説明します。`;
   
   let htmlContent = '';
   
@@ -236,7 +269,7 @@ export async function generateArticleV2(
     const sectionCharCount = charDistribution.get(`section_${i}`) || 2000;
     
     // サービス訴求セクションかチェック（自社サービス名を環境変数から取得）
-    const serviceName = import.meta.env.VITE_SERVICE_NAME || '当社サービス';
+    const serviceName = import.meta.env?.VITE_SERVICE_NAME || '当社サービス';
     const isServiceSection = section.heading.includes(serviceName) || section.heading.includes('サービス訴求');
 
     // セクション生成プロンプト
@@ -252,7 +285,9 @@ export async function generateArticleV2(
 ${section.heading}
 
 【サブセクション】
-${section.subheadings?.join('\n') || 'なし'}
+${(section.subheadings ?? [])
+  .map((sub) => (typeof sub === "string" ? sub : sub.text))
+  .join("\n") || "なし"}
 
 【目標文字数】
 ${sectionCharCount}文字
@@ -268,7 +303,7 @@ ${companyInfo.case_studies.map(cs => {
   return `- ${industry}: ${cs.result}`;
 }).join('\n')}
 
-【執筆ルール】
+${kenSectionPrelude}【執筆ルール】
 - です・ます調
 - 1文60字以内
 - 検索意図「${keyword}」に自然につながる内容
@@ -288,12 +323,14 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
 ${section.heading}
 
 【サブセクション】
-${section.subheadings?.join('\n') || 'なし'}
+${(section.subheadings ?? [])
+  .map((sub) => (typeof sub === "string" ? sub : sub.text))
+  .join("\n") || "なし"}
 
 【目標文字数】
 ${sectionCharCount}文字
 
-【執筆ルール】
+${kenSectionPrelude}【執筆ルール】
 - です・ます調
 - 1文60字以内
 - 1段落2-3文
@@ -302,7 +339,7 @@ ${regulation.strictBulletPoints ? '- 箇条書きは名詞・短句のみ（12-1
 ${regulation.enableInstructionTags ? '- 適切な箇所に[[IMG提案]]や[[用語ボックス]]を提案' : ''}
 
 【頻出語を含める】
-${outline.competitorResearch?.frequencyWords?.slice(0, 10).map(w => w.word).join(', ') || 'なし'}
+${frequencyWordsForOutline(outline)?.slice(0, 10).map(w => w.word).join(', ') || 'なし'}
 
 HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
 `;
@@ -337,7 +374,9 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
       if (regulation.enableInstructionTags) {
         const tags: InstructionTags = {
           imgSuggestions: [`${section.heading}の説明図`],
-          primaryInfoPoints: ['ここに独自データを追加']
+          primaryInfoPoints: kenSnip
+            ? ['一次情報との整合を確認したうえで具体化すること']
+            : ['ここに独自データを追加'],
         };
         sectionHtml = insertInstructionTags(sectionHtml, tags);
       }
@@ -352,10 +391,14 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
   
   // まとめセクション
   const conclusionCharCount = charDistribution.get('conclusion') || 300;
+  const kenConc = clipKenPrimaryBlock(regulation.externalPrimaryContext || "", 4000);
+  const conclusionIntro = kenConc
+    ? `【参考: KEN社内・一次情報（公開前に確認。任意で要点に反映）】\n${kenConc}\n\n`
+    : "";
   const conclusionPrompt = `
 「${keyword}」についての記事のまとめを執筆してください。
 
-【文字数】
+${conclusionIntro}【文字数】
 ${conclusionCharCount}文字
 
 【構成】
