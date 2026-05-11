@@ -1,7 +1,7 @@
 // 記事執筆サービス
 // 構成案から実際の記事本文を生成
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { SeoOutline, CompetitorResearchResult, FrequencyWord, SubheadingWithNote, OutlineSection, OutlineSectionV2 } from '../types';
 
 type OutlineSectionUnion = OutlineSection | OutlineSectionV2;

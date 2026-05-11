@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { CompetitorResearchResult, ArticleAnalysis, HeadingStructure } from '../types';
 
 // API初期化

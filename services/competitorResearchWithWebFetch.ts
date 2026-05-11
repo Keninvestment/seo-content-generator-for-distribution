@@ -1,7 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { CompetitorResearchResult, ArticleAnalysis } from "../types";
 import { fetchMultiplePages, type PageAnalysis } from "./webFetchService";
 import { searchGoogle, formatSearchResults } from "./googleSearchService";
+import { generateCompetitorResearch as generateGroundedCompetitorResearch } from "./competitorResearchWithSearch";
 import {
   scrapeMultipleWithPuppeteer,
   checkScrapingServerHealth,
@@ -123,6 +124,20 @@ export const generateCompetitorResearch = async (
         );
       } catch (error: any) {
         console.error("❌ Google Search API failed:", error);
+
+        const msg = String(error?.message || "");
+        if (
+          msg.includes("has not been used") ||
+          msg.includes("disabled") ||
+          msg.includes("Unauthorized") ||
+          msg.includes("network") ||
+          msg.includes("fetch")
+        ) {
+          console.warn(
+            "⚠️ Custom Search API が使えないため Gemini Google Search grounding にフォールバックします"
+          );
+          return generateGroundedCompetitorResearch(keyword);
+        }
 
         // エラーの種類に応じて適切なメッセージを返す
         if (error?.message?.includes("quota")) {

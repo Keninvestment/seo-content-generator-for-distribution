@@ -1,7 +1,7 @@
 // 記事執筆サービス Ver.2 - 新レギュレーション対応版
 // 指示タグシステム、厳密な文字数管理、構造化されたセクション構成を実装
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { SeoOutline, SeoOutlineV2, FrequencyWord } from '../types';
 import { isSeoOutlineV2 } from '../types';
 import type { WritingRegulation } from './articleWriterService';

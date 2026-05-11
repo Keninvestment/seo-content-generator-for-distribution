@@ -9,7 +9,9 @@ if (!im.env) {
     VITE_GEMINI_API_KEY:
       process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "",
     VITE_API_URL: process.env.VITE_API_URL || "",
-    VITE_INTERNAL_API_KEY: process.env.VITE_INTERNAL_API_KEY || "",
+    VITE_BACKEND_URL: process.env.VITE_BACKEND_URL || "",
+    VITE_INTERNAL_API_KEY:
+      process.env.VITE_INTERNAL_API_KEY || process.env.INTERNAL_API_KEY || "",
     VITE_SERVICE_NAME: process.env.VITE_SERVICE_NAME || "",
   };
 }

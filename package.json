@@ -7,13 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "orchestrator-seo": "tsx scripts/orchestrator-seo-one-shot.ts",
-    "e2e:human-gate": "tsx scripts/e2e-seo-article-human-gate.ts",
-    "e2e:batch-reflection": "tsx scripts/e2e-batch-articles-reflection.ts",
+    "orchestrator-seo": "NODE_OPTIONS=--preserve-symlinks tsx scripts/orchestrator-seo-one-shot.ts",
+    "e2e:human-gate": "NODE_OPTIONS=--preserve-symlinks tsx scripts/e2e-seo-article-human-gate.ts",
+    "e2e:batch-reflection": "NODE_OPTIONS=--preserve-symlinks tsx scripts/e2e-batch-articles-reflection.ts",
     "start": "npm run server & npm run dev"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
+    "@google/genai": "^2.0.1",
     "@supabase/supabase-js": "^2.86.2",
     "@tailwindcss/typography": "^0.5.16",
     "@types/kuromoji": "^0.1.3",

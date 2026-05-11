@@ -1,7 +1,7 @@
 // ライティングチェックエージェント Ver.3
 // 執筆された記事の品質を多角的に評価・改善提案
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiCompat';
 import { curriculumDataService } from './curriculumDataService';
 // latestAIModelsは汎用化のため削除
 

@@ -1,5 +1,5 @@
 // 記事修正サービス（Gemini 2.5 Pro使用）
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { Issue, SourceInsertion } from "./finalProofreadingAgents/types";
 import {
   parseArticleElements,
@@ -625,7 +625,7 @@ ${relevantSegments
     // Grounding機能を有効化（最新情報を取得）
     tools: [
       {
-        googleSearchRetrieval: {},
+        googleSearch: {},
       },
     ],
   };
@@ -1276,7 +1276,7 @@ ${relevantSegments
     // Grounding機能を有効化（最新情報を取得）
     tools: [
       {
-        googleSearchRetrieval: {},
+        googleSearch: {},
       },
     ],
   };

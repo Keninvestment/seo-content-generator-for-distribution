@@ -1,9 +1,12 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { CompetitorResearchResult } from "../types";
 
 // API初期化
 const apiKey =
-  import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+  import.meta.env?.VITE_GEMINI_API_KEY ||
+  process.env.VITE_GEMINI_API_KEY ||
+  process.env.GEMINI_API_KEY ||
+  process.env.GOOGLE_API_KEY;
 if (!apiKey || apiKey === "" || apiKey === "undefined") {
   throw new Error("GEMINI_API_KEY not set. Please check your .env file.");
 }
@@ -33,6 +36,43 @@ function cleanJsonString(str: string): string {
   return str.trim();
 }
 
+function escapeControlCharactersInStrings(str: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (const ch of str) {
+    if (escaped) {
+      out += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      out += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      out += ch;
+      inString = !inString;
+      continue;
+    }
+    if (inString && ch === "\n") {
+      out += "\\n";
+      continue;
+    }
+    if (inString && ch === "\r") {
+      out += "\\r";
+      continue;
+    }
+    if (inString && ch === "\t") {
+      out += "\\t";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
 export const generateCompetitorResearch = async (
   keyword: string
 ): Promise<CompetitorResearchResult> => {
@@ -45,7 +85,7 @@ Perform the following analysis:
 2. Find the top 20 organic results (exclude ads, shopping, PDFs)
 3. Analyze the top 10 valid articles
 4. For each article, extract:
-   - Actual URL (NOT example.com)
+   - Actual canonical URL (NOT example.com, NOT vertexaisearch.cloud.google.com grounding redirect URLs)
    - Actual title from the page
    - Summary of content (100-150 characters in Japanese)
    - Character count of main content
@@ -66,7 +106,7 @@ Return ONLY valid JSON in this exact format (no comments):
   "validArticles": [
     {
       "rank": [rank number],
-      "url": "[REAL URL from search]",
+      "url": "[REAL canonical URL from search result, never a vertexaisearch.cloud.google.com redirect]",
       "title": "[REAL title]",
       "summary": "[actual summary]",
       "characterCount": [actual count],
@@ -97,7 +137,7 @@ Return ONLY valid JSON in this exact format (no comments):
         temperature: 1.0, // Recommended for search grounding
         maxOutputTokens: 8192,
       },
-      tools: [{ googleSearchRetrieval: {} }], // Enable Google Search
+      tools: [{ googleSearch: {} }], // Enable Google Search
     });
 
     const result = await model.generateContent(prompt);
@@ -119,7 +159,7 @@ Return ONLY valid JSON in this exact format (no comments):
       jsonText = jsonMatch[1];
     }
 
-    jsonText = cleanJsonString(jsonText);
+    jsonText = escapeControlCharactersInStrings(cleanJsonString(jsonText));
 
     let parsedJson;
     try {
@@ -130,7 +170,9 @@ Return ONLY valid JSON in this exact format (no comments):
       // フォールバック
       const fallbackMatch = text.match(/{[\s\S]*}/);
       if (fallbackMatch) {
-        const cleanedFallback = cleanJsonString(fallbackMatch[0]);
+        const cleanedFallback = escapeControlCharactersInStrings(
+          cleanJsonString(fallbackMatch[0])
+        );
         parsedJson = JSON.parse(cleanedFallback);
       } else {
         throw new Error("JSONの解析に失敗しました。");
