@@ -1,7 +1,7 @@
 // 品質チェックエージェント
 // タイトル文字数と見出しの自然さに特化したチェック
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiCompat';
 import type { SeoOutlineV2 } from '../types';
 
 // 初期化

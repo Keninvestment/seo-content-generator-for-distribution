@@ -3,7 +3,7 @@
 
 import { searchGoogle } from './googleSearchService';
 import { scrapeWithPuppeteer } from './puppeteerScrapingService';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI } from './geminiCompat';
 
 const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || '');
 

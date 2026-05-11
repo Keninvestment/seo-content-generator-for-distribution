@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { CompetitorResearchResult, ArticleAnalysis } from "../types";
 
 const apiKey =
@@ -82,7 +82,7 @@ JSONで返してください：
   try {
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
-      tools: [{ googleSearchRetrieval: {} }],
+      tools: [{ googleSearch: {} }],
       generationConfig: {
         temperature: 0.1,
         maxOutputTokens: 8192,

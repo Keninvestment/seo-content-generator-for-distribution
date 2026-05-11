@@ -6,7 +6,7 @@
 // - Grounding機能有効（Google検索で最新情報を取得）
 // - カスタムインストラクション機能を強化
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import { companyDataService } from "./companyDataService";
 import { curriculumDataService } from "./curriculumDataService";
 import { getContextForKeywords, isSupabaseAvailable } from "./primaryDataService";
@@ -887,7 +887,7 @@ ${linkList}
     if (groundingOn) {
       modelConfig.tools = [
         {
-          googleSearchRetrieval: {}, // Gemini 2.0以降の新形式
+          googleSearch: {}, // Gemini 2.0以降の新形式
         },
       ];
       console.log(
@@ -1067,12 +1067,7 @@ export async function generateSectionV3(
     if (groundingOn) {
       modelConfig.tools = [
         {
-          googleSearchRetrieval: {
-            dynamicRetrievalConfig: {
-              mode: "MODE_DYNAMIC",
-              dynamicThreshold: 0.3,
-            },
-          },
+          googleSearch: {},
         },
       ];
     }

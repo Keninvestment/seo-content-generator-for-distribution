@@ -1,7 +1,7 @@
 // セクション単位での記事生成サービス
 // 各見出しを個別に生成し、文字数を確実にコントロール
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { SeoOutline, SeoOutlineV2, FrequencyWord, SubheadingWithNote, OutlineSection, OutlineSectionV2 } from '../types';
 import { isSeoOutlineV2 } from '../types';
 import type { ProofreadingReport } from '../types/proofreading';

@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { CompetitorResearchResult } from "../types";
 
 // API初期化
@@ -108,7 +108,7 @@ export const generateCompetitorResearch = async (
       model: "gemini-2.5-flash",
       tools: [
         {
-          googleSearchRetrieval: {},
+          googleSearch: {},
         },
       ],
       generationConfig: {

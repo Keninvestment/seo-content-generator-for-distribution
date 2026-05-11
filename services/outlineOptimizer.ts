@@ -1,7 +1,7 @@
 // 構成案最適化サービス
 // 競合分析データ（記事一覧、頻出単語、H2/H3構造）を基に構成案を最適化
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { SeoOutline, CompetitorResearchResult, FrequencyWord, ArticleAnalysis } from '../types';
 
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;

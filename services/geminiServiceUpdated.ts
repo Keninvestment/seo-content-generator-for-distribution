@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { SeoOutline, GroundingChunk, CompetitorResearchResult } from '../types';
 
 // 環境変数チェック（本番環境ではログ出力しない）

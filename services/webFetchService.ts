@@ -1,5 +1,5 @@
 // WebFetchを使って実際のページコンテンツを取得するサービス
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 
 const apiKey =
   process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY || "";

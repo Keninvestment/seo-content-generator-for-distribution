@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { GoogleGenerativeAI, SchemaType } from "./geminiCompat";
 import type { SeoOutline, GroundingChunk } from "../types";
 
 const apiKey =
@@ -359,7 +359,7 @@ ${JSON.stringify(responseSchema, null, 2)}
   try {
     const model = genAI.getGenerativeModel({
       model: "gemini-2.0-flash",
-      tools: [{ googleSearchRetrieval: {} }],
+      tools: [{ googleSearch: {} }],
       generationConfig: {
         temperature: 0.7,
         responseMimeType: "application/json",
@@ -370,7 +370,7 @@ ${JSON.stringify(responseSchema, null, 2)}
     const result = await model.generateContent(prompt);
     const response = result.response;
     const sources = response.candidates?.[0]?.groundingMetadata
-      ?.groundingChuncks as GroundingChunk[] | undefined;
+      ?.groundingChunks as GroundingChunk[] | undefined;
     const rawText = response.text().trim();
 
     // The API might return the JSON wrapped in markdown code fences.

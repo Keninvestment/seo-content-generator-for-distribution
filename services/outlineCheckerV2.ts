@@ -1,7 +1,7 @@
 // 構成チェックエージェント Ver.2
 // 生成された構成案の品質チェックと自動修正
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 // latestAIModelsは汎用化のため削除
 import type { 
   SeoOutlineV2, 

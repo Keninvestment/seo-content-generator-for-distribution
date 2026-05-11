@@ -1,7 +1,7 @@
 // 構成案生成サービス Ver.2
 // SEO構成ワークフローに基づいた新しい構成案生成
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "./geminiCompat";
 import type { 
   SeoOutlineV2, 
   CompetitorResearchResult, 
