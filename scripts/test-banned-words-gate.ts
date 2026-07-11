@@ -33,14 +33,45 @@ function runStubTests(): void {
   const dir = mkdtempSync(resolve(tmpdir(), "banned-words-gate-"));
   const fakePython = resolve(dir, "python");
   const previousPython = process.env.CONTENT_FILTERS_PYTHON;
+  const previousRoot = process.env.ORCHESTRATOR_ROOT;
 
   try {
     process.env.CONTENT_FILTERS_PYTHON = fakePython;
+    process.env.ORCHESTRATOR_ROOT = dir;
 
-    writeFileSync(fakePython, '#!/bin/sh\nprintf \'{"hits": []}\\n\'\n', {
-      mode: 0o755,
-    });
+    writeFileSync(
+      fakePython,
+      `#!/bin/sh
+input=$(cat)
+if [ "$#" -ne 4 ] ||
+  [ "$1" != "-m" ] ||
+  [ "$2" != "shared.content_filters.cli" ] ||
+  [ "$3" != "--scope" ] ||
+  [ "$4" != "seo" ] ||
+  [ "$input" != "private test body" ] ||
+  [ "$(pwd -P)" != "$(cd "$ORCHESTRATOR_ROOT" && pwd -P)" ]; then
+  exit 99
+fi
+printf '{"hits": []}\\n'
+exit 0
+`,
+      { mode: 0o755 },
+    );
     assertNoBannedWords("private test body", "stub:clean");
+    const wrongScopeError = expectThrow(
+      () =>
+        assertNoBannedWords(
+          "private test body",
+          "stub:wrong-scope",
+          "wrong-scope",
+        ),
+      "invalid scope must throw",
+    );
+    check(wrongScopeError instanceof Error, "invalid scope error type");
+    check(
+      wrongScopeError.message.includes("exit code 99"),
+      "invalid scope must fail through stub validation",
+    );
 
     writeFileSync(
       fakePython,
@@ -77,6 +108,7 @@ function runStubTests(): void {
     );
   } finally {
     setEnv("CONTENT_FILTERS_PYTHON", previousPython);
+    setEnv("ORCHESTRATOR_ROOT", previousRoot);
     rmSync(dir, { recursive: true, force: true });
   }
 
@@ -156,7 +188,8 @@ try {
   runStubTests();
   runLiveSmoke();
   console.log("ALL PASS");
-} catch {
-  console.error("FAIL banned words gate tests");
+} catch (error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`FAIL banned words gate tests: ${message}`);
   process.exitCode = 1;
 }
