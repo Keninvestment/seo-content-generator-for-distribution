@@ -2,8 +2,6 @@
 // 指示タグシステム、厳密な文字数管理、構造化されたセクション構成を実装
 
 import { GoogleGenerativeAI } from "./geminiCompat";
-import { mkdirSync, writeFileSync } from "fs";
-import { resolve } from "path";
 import type { SeoOutline, SeoOutlineV2, FrequencyWord } from '../types';
 import { isSeoOutlineV2 } from '../types';
 import type { WritingRegulation } from './articleWriterService';
@@ -46,16 +44,23 @@ export interface WritingRegulationV2 extends WritingRegulation {
 
 let promptDumpSequence = 0;
 
-function dumpPromptIfEnabled(label: string, prompt: string): void {
+async function dumpPromptIfEnabled(label: string, prompt: string): Promise<void> {
+  if (typeof process === "undefined") return;
   if (process.env.SEO_DUMP_PROMPTS !== "1") return;
   const outDir = process.env.OUTPUT_DIR?.trim();
   if (!outDir) return;
 
-  const dumpDir = resolve(outDir, "prompt_dump");
-  mkdirSync(dumpDir, { recursive: true });
-  promptDumpSequence += 1;
-  const sequence = String(promptDumpSequence).padStart(2, "0");
-  writeFileSync(resolve(dumpDir, `${sequence}_${label}.txt`), prompt, "utf-8");
+  try {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { resolve } = await import("node:path");
+    const dumpDir = resolve(outDir, "prompt_dump");
+    mkdirSync(dumpDir, { recursive: true });
+    promptDumpSequence += 1;
+    const sequence = String(promptDumpSequence).padStart(2, "0");
+    writeFileSync(resolve(dumpDir, `${sequence}_${label}.txt`), prompt, "utf-8");
+  } catch (error) {
+    console.warn("Prompt dump failed:", error);
+  }
 }
 
 // 指示タグの種類
@@ -174,7 +179,7 @@ HTMLのpタグで出力してください。
       }
     });
 
-    dumpPromptIfEnabled("lead", prompt);
+    await dumpPromptIfEnabled("lead", prompt);
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (error) {
@@ -390,7 +395,7 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
         }
       });
 
-      dumpPromptIfEnabled(`section_${i}`, sectionPrompt);
+      await dumpPromptIfEnabled(`section_${i}`, sectionPrompt);
       const result = await model.generateContent(sectionPrompt);
       let sectionHtml = result.response.text();
       
@@ -458,7 +463,7 @@ HTML形式で出力してください。
       }
     });
 
-    dumpPromptIfEnabled("conclusion", conclusionPrompt);
+    await dumpPromptIfEnabled("conclusion", conclusionPrompt);
     const result = await model.generateContent(conclusionPrompt);
     htmlContent += result.response.text();
     
