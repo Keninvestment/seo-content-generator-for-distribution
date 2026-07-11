@@ -147,7 +147,11 @@ HTMLのpタグで出力してください。
       model: "gemini-2.5-flash",
       generationConfig: {
         temperature: 0.5, // 創造性と正確性のバランスを改善
-        maxOutputTokens: 1000,
+        // gemini-2.5系は既定でthinkingが有効になり、thinkingトークンが
+        // maxOutputTokensを消費して本文が途中切断される → thinking無効化+余裕確保
+        maxOutputTokens: 4096,
+        // @ts-ignore -- SDK型定義に未収載だがREST側で有効
+        thinkingConfig: { thinkingBudget: 0 },
       }
     });
 
@@ -247,9 +251,9 @@ export async function generateArticleV2(
   
   let htmlContent = '';
   
-  // [toc]タグを挿入
-  htmlContent += '[toc]\n\n';
-  
+  // [toc]ショートコードは挿入しない: 現行の投稿先(ownersoffice.co.jp)は
+  // TOCプラグイン未導入のため文字がそのまま露出する（#3324）
+
   // リード文生成
   const leadCharCount = charDistribution.get('lead') || 400;
   let leadContent = '';
@@ -350,7 +354,10 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
         model: "gemini-2.5-flash",
         generationConfig: {
           temperature: 0.5, // 創造性と正確性のバランスを改善
-          maxOutputTokens: Math.ceil(sectionCharCount * 2),
+          // thinkingトークンによる本文切断防止（リード文生成と同じ理由）
+          maxOutputTokens: Math.ceil(sectionCharCount * 2) + 2048,
+          // @ts-ignore -- SDK型定義に未収載だがREST側で有効
+          thinkingConfig: { thinkingBudget: 0 },
         }
       });
 
@@ -414,7 +421,10 @@ HTML形式で出力してください。
       model: "gemini-2.5-flash",
       generationConfig: {
         temperature: 0.5, // 創造性と正確性のバランスを改善
-        maxOutputTokens: 1000,
+        // thinkingトークンによる本文切断防止（リード文生成と同じ理由）
+        maxOutputTokens: 4096,
+        // @ts-ignore -- SDK型定義に未収載だがREST側で有効
+        thinkingConfig: { thinkingBudget: 0 },
       }
     });
 
@@ -430,6 +440,20 @@ HTML形式で出力してください。
   htmlContent = htmlContent
     .replace(/<b>/gi, "<strong>")
     .replace(/<\/b>/gi, "</strong>");
+
+  // LLMがHTMLをmarkdownコードフェンスで包むことがある → フェンス行のみ除去（中身は保持）
+  htmlContent = htmlContent.replace(/^[ \t]*```[a-zA-Z]*[ \t]*$\n?/gm, '');
+
+  // LLMが箇条書き/太字をMarkdownのまま出すことがある → HTMLへフォールバック変換
+  htmlContent = htmlContent.replace(/(^|\n)((?:[ \t]*[*-] .+(?:\n|$))+)/g, (_m, pre, block) => {
+    const items = block
+      .trim()
+      .split('\n')
+      .map((line: string) => `  <li>${line.replace(/^[ \t]*[*-] /, '').trim()}</li>`)
+      .join('\n');
+    return `${pre}<ul>\n${items}\n</ul>\n`;
+  });
+  htmlContent = htmlContent.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
 
   // プレーンテキスト版と文字数カウント
   const plainText = htmlContent
