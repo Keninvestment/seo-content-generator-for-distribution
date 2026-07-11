@@ -253,6 +253,8 @@ async function main(): Promise<void> {
     slug,
   });
 
+  assertNoBannedWords(wpLocal.htmlContent, "orchestrator-seo-one-shot:artifacts");
+
   writeFileSync(
     resolve(outDir, "article.json"),
     JSON.stringify(full.article, null, 2) + "\n",
@@ -266,7 +268,6 @@ async function main(): Promise<void> {
 
   let wpResponse: { link: string; id: number } | null = null;
   if (wpSend) {
-    assertNoBannedWords(wpLocal.htmlContent, "orchestrator-seo-one-shot:wp-send");
     wpResponse = await wordPressCreatePostMin({
       title: wpLocal.title,
       content: wpLocal.htmlContent,
