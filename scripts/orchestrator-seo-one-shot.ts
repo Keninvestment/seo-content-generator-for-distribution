@@ -27,6 +27,7 @@ import {
   simpleSlug,
   runSeoGenerationStages,
 } from "../services/seoOneShotPipeline";
+import { assertNoBannedWords } from "./lib/bannedWordsGate";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..");
@@ -251,6 +252,8 @@ async function main(): Promise<void> {
     keyword,
     slug,
   });
+
+  assertNoBannedWords(wpLocal.htmlContent, "orchestrator-seo-one-shot:artifacts");
 
   writeFileSync(
     resolve(outDir, "article.json"),

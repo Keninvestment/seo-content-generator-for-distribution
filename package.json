@@ -10,6 +10,7 @@
     "orchestrator-seo": "NODE_OPTIONS=--preserve-symlinks tsx scripts/orchestrator-seo-one-shot.ts",
     "e2e:human-gate": "NODE_OPTIONS=--preserve-symlinks tsx scripts/e2e-seo-article-human-gate.ts",
     "e2e:batch-reflection": "NODE_OPTIONS=--preserve-symlinks tsx scripts/e2e-batch-articles-reflection.ts",
+    "test:banned-gate": "tsx scripts/test-banned-words-gate.ts",
     "start": "npm run server & npm run dev"
   },
   "dependencies": {
