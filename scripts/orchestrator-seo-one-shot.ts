@@ -27,6 +27,7 @@ import {
   simpleSlug,
   runSeoGenerationStages,
 } from "../services/seoOneShotPipeline";
+import { assertNoBannedWords } from "./lib/bannedWordsGate";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..");
@@ -265,6 +266,7 @@ async function main(): Promise<void> {
 
   let wpResponse: { link: string; id: number } | null = null;
   if (wpSend) {
+    assertNoBannedWords(wpLocal.htmlContent, "orchestrator-seo-one-shot:wp-send");
     wpResponse = await wordPressCreatePostMin({
       title: wpLocal.title,
       content: wpLocal.htmlContent,

@@ -31,6 +31,7 @@ import {
   simpleSlug,
 } from "../services/seoOneShotPipeline";
 import { promptKenHumanReviewGate } from "./humanKenReviewGate";
+import { assertNoBannedWords } from "./lib/bannedWordsGate";
 
 function usage(): void {
   console.error(`Usage:
@@ -303,6 +304,7 @@ async function main(): Promise<void> {
         : {},
     });
     html = refl.finalHtml;
+    assertNoBannedWords(html, "e2e-human-gate:reflection");
     writeFileSync(
       resolve(outDir, "reflection_result.json"),
       JSON.stringify(

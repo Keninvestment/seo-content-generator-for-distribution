@@ -11,6 +11,7 @@ import { generateCompetitorResearch } from "./competitorResearchWithWebFetch";
 import { generateOutlineV2 } from "./outlineGeneratorV2";
 import { checkAndFixOutline } from "./outlineCheckerV2";
 import { generateArticleV2 } from "./articleWriterServiceV2";
+import { assertNoBannedWords } from "../scripts/lib/bannedWordsGate";
 
 export function readKenPrimaryFromRun(outDir: string): string {
   try {
@@ -119,6 +120,7 @@ export async function runSeoGenerationStages(input: {
   const article = await generateArticleV2(finalOutline, keyword, {
     externalPrimaryContext: orchestratorPrimary,
   });
+  assertNoBannedWords(article.htmlContent, "seoOneShotPipeline:generateArticleV2");
 
   const slug = simpleSlug(keyword);
   const displayTitle = finalOutline.title || article.title;
