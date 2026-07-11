@@ -24,6 +24,17 @@ export function readKenPrimaryFromRun(outDir: string): string {
   }
 }
 
+export function readVoiceLayerFromRun(outDir: string): string {
+  try {
+    const p = resolve(outDir, "ken_voice_layer_context.txt");
+    if (!existsSync(p)) return "";
+    const s = readFileSync(p, "utf-8").trim();
+    return s.length ? s : "";
+  } catch {
+    return "";
+  }
+}
+
 export function readPublicYoutubeFromRun(outDir: string): string {
   try {
     const p = resolve(outDir, "public_youtube_context.txt");
@@ -81,6 +92,7 @@ export async function runSeoGenerationStages(input: {
   const { outDir, keyword, mockCompetitor, outlineOnly } = input;
 
   const kenPrimary = readKenPrimaryFromRun(outDir);
+  const voiceLayer = readVoiceLayerFromRun(outDir);
   const ytPublic = readPublicYoutubeFromRun(outDir);
   const orchestratorPrimary = mergeOrchestratorPrimaryBlocks(
     ytPublic,
@@ -119,6 +131,7 @@ export async function runSeoGenerationStages(input: {
 
   const article = await generateArticleV2(finalOutline, keyword, {
     externalPrimaryContext: orchestratorPrimary,
+    voiceLayerContext: voiceLayer,
   });
   assertNoBannedWords(article.htmlContent, "seoOneShotPipeline:generateArticleV2");
 

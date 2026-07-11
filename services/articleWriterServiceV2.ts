@@ -2,6 +2,8 @@
 // 指示タグシステム、厳密な文字数管理、構造化されたセクション構成を実装
 
 import { GoogleGenerativeAI } from "./geminiCompat";
+import { mkdirSync, writeFileSync } from "fs";
+import { resolve } from "path";
 import type { SeoOutline, SeoOutlineV2, FrequencyWord } from '../types';
 import { isSeoOutlineV2 } from '../types';
 import type { WritingRegulation } from './articleWriterService';
@@ -38,6 +40,22 @@ export interface WritingRegulationV2 extends WritingRegulation {
   addSectionSummary?: boolean; // 各H2末尾に要点まとめを追加するか
   /** オーケストレータが注入した KEN 一次情報（Markdown またはプレーン） */
   externalPrimaryContext?: string;
+  /** 名義ボイス・編集判断ガイド（Markdown またはプレーン） */
+  voiceLayerContext?: string;
+}
+
+let promptDumpSequence = 0;
+
+function dumpPromptIfEnabled(label: string, prompt: string): void {
+  if (process.env.SEO_DUMP_PROMPTS !== "1") return;
+  const outDir = process.env.OUTPUT_DIR?.trim();
+  if (!outDir) return;
+
+  const dumpDir = resolve(outDir, "prompt_dump");
+  mkdirSync(dumpDir, { recursive: true });
+  promptDumpSequence += 1;
+  const sequence = String(promptDumpSequence).padStart(2, "0");
+  writeFileSync(resolve(dumpDir, `${sequence}_${label}.txt`), prompt, "utf-8");
 }
 
 // 指示タグの種類
@@ -117,12 +135,13 @@ function calculateSectionDistribution(
 async function generateLeadWithTemplate(
   keyword: string,
   outline: SeoOutline | SeoOutlineV2,
-  targetCharCount: number
+  targetCharCount: number,
+  voicePrelude: string = ""
 ): Promise<string> {
   const prompt = `
 「${keyword}」についての記事のリード文を、以下のテンプレートに従って執筆してください。
 
-【テンプレート構成】
+${voicePrelude}【テンプレート構成】
 1. 疑問形で始める（読者の代表的な疑問・誤解）
 2. 共感を示す
 3. ベネフィット（得られること2点）を提示
@@ -155,6 +174,7 @@ HTMLのpタグで出力してください。
       }
     });
 
+    dumpPromptIfEnabled("lead", prompt);
     const result = await model.generateContent(prompt);
     return result.response.text();
   } catch (error) {
@@ -235,6 +255,10 @@ export async function generateArticleV2(
   const kenSectionPrelude = kenSnip
     ? `【参考: KEN社内・一次情報（未検証の数値や固有名は一般化または省略）】\n${kenSnip}\n\n`
     : "";
+  const voiceSnip = clipKenPrimaryBlock(regulation.voiceLayerContext || "", 8000);
+  const voicePrelude = voiceSnip
+    ? `【執筆方針（名義ボイス・編集判断ガイド — 執筆ルールと同等に遵守）】\n${voiceSnip}\n\n`
+    : "";
 
   console.log('📝 Ver.2記事生成開始:', {
     keyword,
@@ -259,7 +283,12 @@ export async function generateArticleV2(
   let leadContent = '';
   
   if (regulation.useLeadTemplate) {
-    leadContent = await generateLeadWithTemplate(keyword, outline, leadCharCount);
+    leadContent = await generateLeadWithTemplate(
+      keyword,
+      outline,
+      leadCharCount,
+      voicePrelude
+    );
   } else {
     // 従来の生成方法
     leadContent = `<p>${keyword}について解説します。</p>`;
@@ -307,7 +336,7 @@ ${companyInfo.case_studies.map(cs => {
   return `- ${industry}: ${cs.result}`;
 }).join('\n')}
 
-${kenSectionPrelude}【執筆ルール】
+${voicePrelude}${kenSectionPrelude}【執筆ルール】
 - です・ます調
 - 1文60字以内
 - 検索意図「${keyword}」に自然につながる内容
@@ -334,7 +363,7 @@ ${(section.subheadings ?? [])
 【目標文字数】
 ${sectionCharCount}文字
 
-${kenSectionPrelude}【執筆ルール】
+${voicePrelude}${kenSectionPrelude}【執筆ルール】
 - です・ます調
 - 1文60字以内
 - 1段落2-3文
@@ -361,6 +390,7 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
         }
       });
 
+      dumpPromptIfEnabled(`section_${i}`, sectionPrompt);
       const result = await model.generateContent(sectionPrompt);
       let sectionHtml = result.response.text();
       
@@ -405,7 +435,7 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
   const conclusionPrompt = `
 「${keyword}」についての記事のまとめを執筆してください。
 
-${conclusionIntro}【文字数】
+${voicePrelude}${conclusionIntro}【文字数】
 ${conclusionCharCount}文字
 
 【構成】
@@ -428,6 +458,7 @@ HTML形式で出力してください。
       }
     });
 
+    dumpPromptIfEnabled("conclusion", conclusionPrompt);
     const result = await model.generateContent(conclusionPrompt);
     htmlContent += result.response.text();
     
