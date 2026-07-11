@@ -24,6 +24,7 @@ import {
   mergeOrchestratorPrimaryBlocks,
   readKenPrimaryFromRun,
   readPublicYoutubeFromRun,
+  readVoiceLayerFromRun,
   simpleSlug,
   runSeoGenerationStages,
 } from "../services/seoOneShotPipeline";
@@ -165,6 +166,7 @@ async function main(): Promise<void> {
   );
 
   const kenPrimary = readKenPrimaryFromRun(outDir);
+  const voiceLayer = readVoiceLayerFromRun(outDir);
   const ytPublic = readPublicYoutubeFromRun(outDir);
   const orchestratorPrimary = mergeOrchestratorPrimaryBlocks(ytPublic, kenPrimary);
 
@@ -176,6 +178,11 @@ async function main(): Promise<void> {
   if (kenPrimary) {
     console.log(
       `[orchestrator-seo] ken_primary_context.txt: ${kenPrimary.length} chars`
+    );
+  }
+  if (voiceLayer) {
+    console.log(
+      `[orchestrator-seo] ken_voice_layer_context.txt: ${voiceLayer.length} chars`
     );
   }
   if (orchestratorPrimary && !ytPublic && kenPrimary) {
@@ -224,6 +231,7 @@ async function main(): Promise<void> {
           keyword,
           mockCompetitor,
           ken_primary_context: !!kenPrimary,
+          voice_layer_context: !!voiceLayer,
           public_youtube_context: !!ytPublic,
         },
         null,
@@ -292,6 +300,7 @@ async function main(): Promise<void> {
         wpSend,
         wpPosted: !!wpResponse,
         ken_primary_context: !!kenPrimary,
+        voice_layer_context: !!voiceLayer,
         public_youtube_context: !!ytPublic,
       },
       null,
