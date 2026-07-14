@@ -9,5 +9,8 @@ export const REVIEW_HEAVY_MODEL =
 
 export function geminiThinkingConfig(model: string): Record<string, unknown> {
   if (/^gemini-2\./.test(model)) return { thinkingBudget: 0 };
-  return { thinkingLevel: "minimal" }; // gemini-3系
+  // gemini-3系: thinkingトークンはmaxOutputTokensに合算されるため既定は最小
+  return {
+    thinkingLevel: process.env.SEO_GEMINI_THINKING_LEVEL || "minimal",
+  };
 }

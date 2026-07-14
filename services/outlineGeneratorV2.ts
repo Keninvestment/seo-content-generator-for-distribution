@@ -17,7 +17,7 @@ import { generateTitleHook, generateFullTitle } from '../utils/titleHookGenerato
 // import { getCompanyInfo, generateCompanyContext } from './companyService';
 // import { curriculumDataService } from './curriculumDataService';
 import { getContextForKeywords, isSupabaseAvailable } from './primaryDataService';
-import { GEMINI_PRO_MODEL } from './modelConfig';
+import { GEMINI_PRO_MODEL, geminiThinkingConfig } from './modelConfig';
 
 const apiKey =
   process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY || "";
@@ -789,7 +789,9 @@ ${mergedPrimaryDataContext}
       generationConfig: {
         temperature: 0.5, // バランス重視（創造性と正確性）
         maxOutputTokens: 16000, // トークン数を増やして詳細な構成を生成可能に
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        // @ts-ignore thinkingトークンによるJSON途中切断を防止
+        thinkingConfig: geminiThinkingConfig(GEMINI_PRO_MODEL)
       }
     });
 

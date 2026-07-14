@@ -10,7 +10,7 @@ import type {
 } from '../types';
 import { countCharacters } from '../utils/characterCounter';
 import { generateOutlineV2 } from './outlineGeneratorV2';
-import { GEMINI_PRO_MODEL } from './modelConfig';
+import { GEMINI_PRO_MODEL, geminiThinkingConfig } from './modelConfig';
 // 自社サービス関連のimportは汎用化のため削除
 // import { getCompanyInfo } from './companyService';
 
@@ -593,7 +593,9 @@ ${h3Shortage ? `
         temperature, // 修正回数に応じて正確性を高める
         topP,        // 修正回数に応じて確実性を高める
         maxOutputTokens: 16000, // 大きな構成にも対応
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        // @ts-ignore thinkingトークンによるJSON途中切断を防止
+        thinkingConfig: geminiThinkingConfig(GEMINI_PRO_MODEL)
       }
     });
 
