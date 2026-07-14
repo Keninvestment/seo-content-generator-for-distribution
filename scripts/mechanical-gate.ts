@@ -366,8 +366,15 @@ function checkUnsupportedClaims(article: string, violations: Violation[]): void 
   ]);
 }
 
-function sentenceAfter(article: string, index: number): string {
-  return article.slice(index).split(/[。\n！？]/, 1)[0];
+function sentenceContaining(article: string, index: number): string {
+  const previousPeriod = article.lastIndexOf('。', Math.max(0, index - 1));
+  const previousNewline = article.lastIndexOf('\n', Math.max(0, index - 1));
+  const start = Math.max(previousPeriod, previousNewline) + 1;
+  const nextPeriod = article.indexOf('。', index);
+  const nextNewline = article.indexOf('\n', index);
+  const ends = [nextPeriod, nextNewline].filter((end) => end >= 0);
+  const end = ends.length > 0 ? Math.min(...ends) : article.length;
+  return article.slice(start, end).trim();
 }
 
 function checkAssertionBanned(article: string, violations: Violation[]): void {
@@ -375,11 +382,30 @@ function checkAssertionBanned(article: string, violations: Violation[]): void {
     { pattern: /節税できる/g, message: '「場合」の限定がない節税断定表現です。' },
     { pattern: /経費(?:に|化)できる/g, message: '「場合」の限定がない経費算入の断定表現です。' },
   ];
+  const qualifiers = [
+    '場合',
+    'ケース',
+    '条件',
+    '要件',
+    '限り',
+    'とは限らない',
+    'とは限りません',
+    'わけではない',
+    'わけではありません',
+    '可能性',
+    'なら',
+    'れば',
+    'かどうか',
+    'でしょうか',
+  ];
 
   for (const { pattern, message } of conditionalPatterns) {
     for (const match of article.matchAll(pattern)) {
       const index = match.index ?? 0;
-      if (sentenceAfter(article, index + match[0].length).includes('場合')) continue;
+      const sentence = sentenceContaining(article, index);
+      const hasQualifier = qualifiers.some((qualifier) => sentence.includes(qualifier));
+      const endsWithNegation = /でき(?:ない|ません)$/.test(sentence);
+      if (hasQualifier || endsWithNegation) continue;
       violations.push({
         rule: 'assertion-banned',
         severity: 'major',
