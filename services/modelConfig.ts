@@ -7,10 +7,15 @@ export const REVIEW_LIGHT_MODEL =
 export const REVIEW_HEAVY_MODEL =
   process.env.SEO_REVIEW_HEAVY_MODEL || "gpt-5.6-terra";
 
-export function geminiThinkingConfig(model: string): Record<string, unknown> {
+export function geminiThinkingConfig(
+  model: string,
+  levelOverride?: string
+): Record<string, unknown> {
   if (/^gemini-2\./.test(model)) return { thinkingBudget: 0 };
-  // gemini-3系: thinkingトークンはmaxOutputTokensに合算されるため既定は最小
+  // gemini-3系: thinkingトークンはmaxOutputTokensに合算されるため既定は最小。
+  // maxOutputTokensが小さい工程でlevelを上げるとJSONが途中切断するため工程別上書き可
   return {
-    thinkingLevel: process.env.SEO_GEMINI_THINKING_LEVEL || "minimal",
+    thinkingLevel:
+      levelOverride || process.env.SEO_GEMINI_THINKING_LEVEL || "minimal",
   };
 }

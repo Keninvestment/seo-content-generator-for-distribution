@@ -175,7 +175,7 @@ HTMLのpタグで出力してください。
         // thinkingが既定で有効なモデルではthinkingトークンが
         // maxOutputTokensを消費して本文が途中切断される → thinking最小化+余裕確保
         maxOutputTokens: 4096,
-        thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL),
+        thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL, process.env.SEO_GEMINI_THINKING_LEVEL_WRITER),
       }
     });
 
@@ -390,7 +390,7 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
           temperature: 0.5, // 創造性と正確性のバランスを改善
           // thinkingトークンによる本文切断防止（リード文生成と同じ理由）
           maxOutputTokens: Math.ceil(sectionCharCount * 2) + 2048,
-          thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL),
+          thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL, process.env.SEO_GEMINI_THINKING_LEVEL_WRITER),
         }
       });
 
@@ -457,7 +457,7 @@ HTML形式で出力してください。
         temperature: 0.5, // 創造性と正確性のバランスを改善
         // thinkingトークンによる本文切断防止（リード文生成と同じ理由）
         maxOutputTokens: 4096,
-        thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL),
+        thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL, process.env.SEO_GEMINI_THINKING_LEVEL_WRITER),
       }
     });
 
