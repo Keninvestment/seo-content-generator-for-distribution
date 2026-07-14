@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "./geminiCompat";
 import type { CompetitorResearchResult } from "../types";
+import { GEMINI_FLASH_MODEL, geminiThinkingConfig } from "./modelConfig";
 
 // API初期化
 const apiKey =
@@ -130,16 +131,15 @@ Return ONLY valid JSON in this exact format (no comments):
       keyword
     );
 
-    // Gemini 2.0 Flash with Google Search grounding
+    // Gemini Flash with Google Search grounding
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: GEMINI_FLASH_MODEL,
       generationConfig: {
         temperature: 1.0, // Recommended for search grounding
-        // gemini-2.5系は既定でthinkingが有効になり、thinkingトークンが
-        // maxOutputTokensを消費して本文が途中切断される → thinking無効化+余裕確保
+        // thinkingが既定で有効なモデルではthinkingトークンが
+        // maxOutputTokensを消費して本文が途中切断される → thinking最小化+余裕確保
         maxOutputTokens: 8192,
-        // @ts-ignore -- SDK型定義に未収載だがREST側で有効
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL),
       },
       tools: [{ googleSearch: {} }], // Enable Google Search
     });

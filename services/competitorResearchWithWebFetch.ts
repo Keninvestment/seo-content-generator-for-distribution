@@ -8,6 +8,7 @@ import {
   checkScrapingServerHealth,
 } from "./puppeteerScrapingService";
 import { analyzeWordFrequency } from "./wordFrequencyService";
+import { GEMINI_FLASH_MODEL } from "./modelConfig";
 
 let _genAI: GoogleGenerativeAI | null = null;
 function getGenAI(): GoogleGenerativeAI {
@@ -408,7 +409,7 @@ JSONで返してください：
 
     // Geminiモデルを初期化
     const topicsModel = getGenAI().getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: GEMINI_FLASH_MODEL,
       generationConfig: {
         temperature: 0.7,
         maxOutputTokens: 2048,

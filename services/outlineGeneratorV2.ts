@@ -17,6 +17,7 @@ import { generateTitleHook, generateFullTitle } from '../utils/titleHookGenerato
 // import { getCompanyInfo, generateCompanyContext } from './companyService';
 // import { curriculumDataService } from './curriculumDataService';
 import { getContextForKeywords, isSupabaseAvailable } from './primaryDataService';
+import { GEMINI_PRO_MODEL } from './modelConfig';
 
 const apiKey =
   process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY || "";
@@ -784,7 +785,7 @@ ${mergedPrimaryDataContext}
 
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-pro",
+      model: GEMINI_PRO_MODEL,
       generationConfig: {
         temperature: 0.5, // バランス重視（創造性と正確性）
         maxOutputTokens: 16000, // トークン数を増やして詳細な構成を生成可能に

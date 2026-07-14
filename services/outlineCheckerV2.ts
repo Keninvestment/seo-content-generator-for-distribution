@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { countCharacters } from '../utils/characterCounter';
 import { generateOutlineV2 } from './outlineGeneratorV2';
+import { GEMINI_PRO_MODEL } from './modelConfig';
 // 自社サービス関連のimportは汎用化のため削除
 // import { getCompanyInfo } from './companyService';
 
@@ -587,7 +588,7 @@ ${h3Shortage ? `
     const topP = attemptNumber === 0 ? 0.95 : 0.85;
     
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-pro",
+      model: GEMINI_PRO_MODEL,
       generationConfig: {
         temperature, // 修正回数に応じて正確性を高める
         topP,        // 修正回数に応じて確実性を高める
