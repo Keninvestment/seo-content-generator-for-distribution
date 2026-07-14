@@ -135,7 +135,11 @@ Return ONLY valid JSON in this exact format (no comments):
       model: "gemini-2.5-flash",
       generationConfig: {
         temperature: 1.0, // Recommended for search grounding
+        // gemini-2.5系は既定でthinkingが有効になり、thinkingトークンが
+        // maxOutputTokensを消費して本文が途中切断される → thinking無効化+余裕確保
         maxOutputTokens: 8192,
+        // @ts-ignore -- SDK型定義に未収載だがREST側で有効
+        thinkingConfig: { thinkingBudget: 0 },
       },
       tools: [{ googleSearch: {} }], // Enable Google Search
     });
