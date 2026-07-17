@@ -10,7 +10,8 @@ type Rule =
   | 'unsupported-claims'
   | 'assertion-banned'
   | 'length-shortfall'
-  | 'structure-incomplete';
+  | 'structure-incomplete'
+  | 'paragraph-rhythm';
 
 interface Violation {
   rule: Rule;
@@ -483,6 +484,67 @@ function checkStructure(article: string, violations: Violation[]): void {
   }
 }
 
+function checkParagraphRhythm(article: string, violations: Violation[]): void {
+  const paragraphs: Array<{ startIndex: number; text: string }> = [];
+  const lines = article.split('\n');
+  let offset = 0;
+  let inCodeFence = false;
+  let paragraphStart = -1;
+  let paragraphLines: string[] = [];
+
+  const flushParagraph = (): void => {
+    if (paragraphStart >= 0 && paragraphLines.length > 0) {
+      paragraphs.push({ startIndex: paragraphStart, text: paragraphLines.join('\n') });
+    }
+    paragraphStart = -1;
+    paragraphLines = [];
+  };
+
+  for (const line of lines) {
+    if (/^\s*```/.test(line)) {
+      flushParagraph();
+      inCodeFence = !inCodeFence;
+    } else if (inCodeFence) {
+      // Code fence content is not prose and must not affect paragraph rhythm.
+    } else if (line.trim().length === 0) {
+      flushParagraph();
+    } else {
+      if (paragraphStart < 0) paragraphStart = offset;
+      paragraphLines.push(line);
+    }
+    offset += line.length + 1;
+  }
+  flushParagraph();
+
+  const excludedBlock = /^(?:#|(?:[-+*]|\d+\.)\s|\||>|<[^>]+>|\[[^\]]+\]:\s*\S+|([-*_])(?:\s*\1){2,}\s*$)/;
+
+  for (const paragraph of paragraphs) {
+    const trimmed = paragraph.text.trimStart();
+    if (excludedBlock.test(trimmed)) continue;
+
+    const normalized = paragraph.text
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/[*_~`|]/g, '')
+      .replace(/\s/g, '');
+    const chars = Array.from(normalized).length;
+    const sentences = normalized.split(/[。！？]/).filter((segment) => segment.length > 0).length;
+    const failsRhythm =
+      (sentences >= 3 && chars > 100) || (sentences === 2 && chars > 120);
+    if (!failsRhythm) continue;
+
+    const preview = Array.from(compact(paragraph.text)).slice(0, 40).join('');
+    violations.push({
+      rule: 'paragraph-rhythm',
+      severity: 'major',
+      evidence: `${ARTICLE_FILE}:${lineNumberAt(article, paragraph.startIndex)} ${preview} (chars=${chars}, sentences=${sentences})`,
+      message:
+        '段落リズム違反: 1段落=1〜2文・40〜80字目安（writer_prompt.md ルール9）。分割して書き直すこと。',
+    });
+  }
+}
+
 async function run(directoryArgument: string): Promise<GateResult> {
   const directory = resolve(directoryArgument);
   const article = await readFile(join(directory, ARTICLE_FILE), 'utf8');
@@ -505,6 +567,7 @@ async function run(directoryArgument: string): Promise<GateResult> {
     violations,
   );
   checkStructure(article, violations);
+  checkParagraphRhythm(article, violations);
 
   const criticalCount = violations.filter((violation) => violation.severity === 'critical').length;
   const majorCount = violations.filter((violation) => violation.severity === 'major').length;
