@@ -194,6 +194,7 @@ APIキーなどの機密情報をSecret Managerに保存します。
 | `SUPABASE_URL` | SupabaseプロジェクトURL | 使わない場合は `none` |
 | `SUPABASE_ANON_KEY` | Supabase匿名キー | 使わない場合は `none` |
 | `SLACK_WEBHOOK_URL` | Slack Webhook URL | 使わない場合は `none` |
+| `IMAGE_GEN_URL` | 旧画像生成エージェント連携用（現在は未使用・runtime依存除去まではCloud Buildが参照） | 使わない場合は `none` |
 
 > **注意**: 空欄ではなく `none` などの文字を入力してください。
 > 空のシークレットはバージョンが作成されず、ビルドエラーになります。
@@ -607,7 +608,7 @@ Issue #3670の裁定により、旧 `ai-article-imager-for-wordpress/` は廃止
 `_archive/ai-article-imager-for-wordpress_20260718/` に参照専用で退避されました。
 
 - archive配下で`npm install`、build、起動、Cloud Runへのデプロイを実行しないでください。
-- `ai-article-imager`サービスや`IMAGE_GEN_URL`を新規設定しないでください。
+- 実サービスとしての`ai-article-imager`や実URLとしての`IMAGE_GEN_URL`は新規設定しないでください。ただし、`cloudbuild.yaml`が現時点で`IMAGE_GEN_URL`シークレットをビルド時に参照するため、STEP 3の手順に従いプレースホルダー値（`none`）でのシークレット作成とCloud BuildサービスアカウントへのIAM付与（STEP 3.2参照）は必須です。`cloudbuild.yaml`・`Dockerfile`・runtime callsiteから`IMAGE_GEN_URL`への参照が完全に除去された段階で、このプレースホルダーシークレットも不要になります。
 - 画像が必要な場合は、現行のImage2完成画像フローで作成してください。
 
 ---
