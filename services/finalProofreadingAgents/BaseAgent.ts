@@ -321,7 +321,7 @@ export abstract class BaseProofreadingAgent implements BaseAgent {
           model: this.model,
           input: finalPrompt,
           reasoning: {
-            effort: useWebSearch ? "medium" : "minimal", // web_searchはmedium以上が必要
+            effort: useWebSearch ? "medium" : "low", // web_searchはmedium以上が必要。gpt-5.6系は"minimal"非対応（Refs Keninvestment/scripts#3638）
           },
         };
 
