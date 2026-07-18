@@ -2,6 +2,8 @@
 
 このガイドでは、SEOコンテンツ生成ツールを自社用にカスタマイズする方法を説明します。
 
+> **archived（#3670）:** `ai-article-imager-for-wordpress/` の画像カスタマイズ手順は旧実装の参照用で、実装は `_archive/ai-article-imager-for-wordpress_20260718/` へ退避済みです。
+
 ## はじめに
 
 ### カスタマイズとは？

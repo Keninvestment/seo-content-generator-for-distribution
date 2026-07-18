@@ -4,6 +4,8 @@ Refs: GitHub #1512
 目的: リファクタ・SDK差し替え時に **破ってはいけない入出力契約** を固定する。  
 正本コード: `types.ts`, `services/outlineGeneratorV2.ts`, `services/competitorResearchWithWebFetch.ts`, `services/finalProofreadingAgents/types.ts`, `ai-article-imager-for-wordpress/services/wordpressService.ts`, `components/ArticleDisplay.tsx`
 
+> **archived（#3670）:** `ai-article-imager-for-wordpress/` の回帰契約は旧実装の参照用で、実装は `_archive/ai-article-imager-for-wordpress_20260718/` へ退避済みです。
+
 ---
 
 ## 1. Outline generation（構成生成）

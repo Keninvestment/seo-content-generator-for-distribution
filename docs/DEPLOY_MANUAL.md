@@ -2,6 +2,8 @@
 
 このマニュアルでは、SEOコンテンツ生成ツールをGoogle Cloud Runにデプロイする手順を説明します。
 
+> **archived（#3670）:** 画像生成エージェントの手順は旧実装の参照用で、実装は `_archive/ai-article-imager-for-wordpress_20260718/` へ退避済みです。
+
 ---
 
 ## 用語説明
