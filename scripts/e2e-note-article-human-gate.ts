@@ -394,7 +394,13 @@ async function main(): Promise<void> {
   console.log("[e2e-note-human-gate] 完了。\n");
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    // 残存ハンドル（エージェントの長時間watchdogタイマー等）でイベントループが
+    // 生き残り、親のtimeout killで exit 143 になるのを防ぐ
+    process.exit(0);
+  })
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });
