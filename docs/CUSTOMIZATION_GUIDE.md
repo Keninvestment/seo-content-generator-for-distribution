@@ -2,7 +2,7 @@
 
 このガイドでは、SEOコンテンツ生成ツールを自社用にカスタマイズする方法を説明します。
 
-> **archived（#3670）:** `ai-article-imager-for-wordpress/` の画像カスタマイズ手順は旧実装の参照用で、実装は `_archive/ai-article-imager-for-wordpress_20260718/` へ退避済みです。
+> **archived（#3670）:** `ai-article-imager-for-wordpress/` は廃止済みです。`_archive/ai-article-imager-for-wordpress_20260718/` は参照専用で、起動・デプロイ・カスタマイズは禁止です。画像は現行のImage2完成画像フローを使用してください。
 
 ## はじめに
 
@@ -78,8 +78,7 @@
 5. 記事を校正
    └─ ここで「会社名」を見て自社情報かどうか判定
    ↓
-6. 画像を生成してWordPressに投稿
-   └─ ここで「デフォルト画像」が使われる
+6. 現行のImage2フローで作成した完成画像をWordPress記事に設定
 ```
 
 ---
@@ -246,30 +245,14 @@ const v3Result = await generateArticleV3({
 
 ## STEP 3: デフォルト画像を差し替え
 
-記事内で使われる画像を自社のブランドに合ったものに変更できます。
+旧画像生成エージェントのデフォルト画像差し替えは廃止されました。
+記事内で使う画像は、現行のImage2完成画像フローでブランド要件を指定して作成してください。
 
-### 画像ファイルの場所
+### 旧手順の扱い
 
-```
-ai-article-imager-for-wordpress/public/default-images/
-├── サービス訴求.png       ← サービス紹介セクション用
-├── とは・概要.jpg         ← 説明セクション用
-├── メリット・おすすめ.png  ← メリット紹介用
-├── デメリット・リスク.jpg  ← デメリット説明用
-├── 解決策・ポイント.png    ← 解決策セクション用
-└── よくある質問・FAQ.png   ← FAQセクション用
-```
-
-### 差し替え方法
-
-1. 上記フォルダを開く
-2. 同じファイル名で自社の画像を用意
-3. 既存のファイルを上書き
-
-**ポイント:**
-- ファイル名は変えない（同じ名前で上書き）
-- 画像サイズは横1200px程度がおすすめ
-- PNG または JPG形式
+旧ファイルは `_archive/ai-article-imager-for-wordpress_20260718/public/default-images/`
+に参照用として残っていますが、変更しても現行フローには反映されません。
+新規画像の作成・差し替えには使用しないでください。
 
 ---
 
@@ -422,7 +405,7 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...（長い文字列）
 |---------|---------|
 | `.env` | 環境変数の設定 |
 | `services/companyMasterData.ts` | クライアント実績データ |
-| `ai-article-imager-for-wordpress/public/default-images/` | デフォルト画像 |
+| `_archive/ai-article-imager-for-wordpress_20260718/public/default-images/` | 旧デフォルト画像（参照専用・編集対象外） |
 
 ---
 
@@ -434,4 +417,4 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIs...（長い文字列）
 2. **次に**: 自社実績データの登録（STEP 2）
 3. **余裕があれば**: 出典URLの優先順位（STEP 4）
 4. **量産するなら**: スプレッドシートの準備（STEP 5）
-5. **こだわるなら**: 画像の差し替え（STEP 3）
+5. **画像が必要なら**: 現行のImage2完成画像フローを使用（STEP 3）
