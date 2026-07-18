@@ -6,6 +6,7 @@ import type { SeoOutline, SeoOutlineV2, FrequencyWord } from '../types';
 import { isSeoOutlineV2 } from '../types';
 import type { WritingRegulation } from './articleWriterService';
 import { getCompanyInfo, generateCompanyContext } from './companyService';
+import { GEMINI_FLASH_MODEL, geminiThinkingConfig } from './modelConfig';
 
 const apiKey =
   process.env.GEMINI_API_KEY || import.meta.env?.VITE_GEMINI_API_KEY || "";
@@ -168,14 +169,13 @@ HTMLのpタグで出力してください。
 
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: GEMINI_FLASH_MODEL,
       generationConfig: {
         temperature: 0.5, // 創造性と正確性のバランスを改善
-        // gemini-2.5系は既定でthinkingが有効になり、thinkingトークンが
-        // maxOutputTokensを消費して本文が途中切断される → thinking無効化+余裕確保
+        // thinkingが既定で有効なモデルではthinkingトークンが
+        // maxOutputTokensを消費して本文が途中切断される → thinking最小化+余裕確保
         maxOutputTokens: 4096,
-        // @ts-ignore -- SDK型定義に未収載だがREST側で有効
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL, process.env.SEO_GEMINI_THINKING_LEVEL_WRITER),
       }
     });
 
@@ -385,13 +385,12 @@ HTML形式で出力してください（h2, h3, p, ul, li タグを使用）。
 
     try {
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: GEMINI_FLASH_MODEL,
         generationConfig: {
           temperature: 0.5, // 創造性と正確性のバランスを改善
           // thinkingトークンによる本文切断防止（リード文生成と同じ理由）
           maxOutputTokens: Math.ceil(sectionCharCount * 2) + 2048,
-          // @ts-ignore -- SDK型定義に未収載だがREST側で有効
-          thinkingConfig: { thinkingBudget: 0 },
+          thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL, process.env.SEO_GEMINI_THINKING_LEVEL_WRITER),
         }
       });
 
@@ -453,13 +452,12 @@ HTML形式で出力してください。
 
   try {
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: GEMINI_FLASH_MODEL,
       generationConfig: {
         temperature: 0.5, // 創造性と正確性のバランスを改善
         // thinkingトークンによる本文切断防止（リード文生成と同じ理由）
         maxOutputTokens: 4096,
-        // @ts-ignore -- SDK型定義に未収載だがREST側で有効
-        thinkingConfig: { thinkingBudget: 0 },
+        thinkingConfig: geminiThinkingConfig(GEMINI_FLASH_MODEL, process.env.SEO_GEMINI_THINKING_LEVEL_WRITER),
       }
     });
 
