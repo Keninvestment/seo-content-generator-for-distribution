@@ -2,7 +2,9 @@
 
 Refs: GitHub #1512  
 目的: リファクタ・SDK差し替え時に **破ってはいけない入出力契約** を固定する。  
-正本コード: `types.ts`, `services/outlineGeneratorV2.ts`, `services/competitorResearchWithWebFetch.ts`, `services/finalProofreadingAgents/types.ts`, `ai-article-imager-for-wordpress/services/wordpressService.ts`, `components/ArticleDisplay.tsx`
+正本コード: `types.ts`, `services/outlineGeneratorV2.ts`, `services/competitorResearchWithWebFetch.ts`, `services/finalProofreadingAgents/types.ts`, `_archive/ai-article-imager-for-wordpress_20260718/services/wordpressService.ts`, `components/ArticleDisplay.tsx`
+
+> **archived（#3670）:** WordPress payload節は旧実装の回帰資料です。archiveは参照専用で、起動・デプロイ・再利用は禁止です。現行画像生成にはImage2完成画像フローを使用してください。
 
 ---
 
@@ -51,7 +53,7 @@ Refs: GitHub #1512
 
 ---
 
-## 3. WordPress payload（連携データ）
+## 3. WordPress payload（廃止済み連携の参照データ）
 
 アプリ内には「REST の単一 JSON スキーマ」より **localStorage + postMessage** が正本に近い。
 
@@ -74,7 +76,7 @@ Refs: GitHub #1512
 { "type": "ARTICLE_DATA", "data": "<上記と同形の articleData>" }
 ```
 
-### 3.2 AI Article Imager → WordPress API（`wordpressService.ts`）
+### 3.2 AI Article Imager → WordPress API（archive内の`wordpressService.ts`）
 
 **`POST .../wordpress/create-post` ボディ**:
 

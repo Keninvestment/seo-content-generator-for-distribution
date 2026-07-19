@@ -2,6 +2,8 @@
 
 このマニュアルでは、SEOコンテンツ生成ツールをGoogle Cloud Runにデプロイする手順を説明します。
 
+> **archived（#3670）:** 旧画像生成エージェントは廃止済みです。`_archive/ai-article-imager-for-wordpress_20260718/` は参照専用で、起動・デプロイ・更新は禁止です。画像は現行のImage2完成画像フローを使用してください。
+
 ---
 
 ## 用語説明
@@ -30,7 +32,7 @@
 7. [STEP 5: ソースコードのアップロード](#step-5-ソースコードのアップロード)
 8. [STEP 6: バックエンドサーバーのデプロイ](#step-6-バックエンドサーバーのデプロイ)
 9. [STEP 7: SEOエージェントのデプロイ](#step-7-seoエージェントのデプロイ)
-10. [STEP 8: 画像生成エージェントのデプロイ](#step-8-画像生成エージェントのデプロイ)
+10. [STEP 8: 旧画像生成エージェントのtombstone](#step-8-旧画像生成エージェントのtombstone)
 11. [STEP 9: 環境変数の相互設定](#step-9-環境変数の相互設定)
 12. [STEP 10: 動作確認](#step-10-動作確認)
 13. [オプション: スプレッドシート機能の設定](#オプション-スプレッドシート機能の設定)
@@ -46,15 +48,13 @@
 │                    Google Cloud Run                          │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
-│  ┌──────────────────┐      ┌──────────────────┐             │
-│  │  SEOエージェント   │      │  画像生成エージェント │             │
-│  │  (フロントエンド)   │      │  (WordPress連携)   │             │
-│  │  ポート: 8080     │      │   ポート: 8080     │             │
-│  └────────┬─────────┘      └────────┬─────────┘             │
-│           │                         │                        │
-│           └─────────┬───────────────┘                        │
-│                     │                                        │
-│                     ▼                                        │
+│  ┌──────────────────┐                                       │
+│  │  SEOエージェント   │                                       │
+│  │  (フロントエンド)   │                                       │
+│  │  ポート: 8080     │                                       │
+│  └────────┬─────────┘                                       │
+│           │                                                  │
+│           ▼                                                  │
 │           ┌──────────────────┐                               │
 │           │ バックエンドサーバー │                               │
 │           │  (Puppeteer)     │                               │
@@ -70,7 +70,6 @@
 |---------|------|
 | バックエンドサーバー | Puppeteerを使用したWebスクレイピング、API提供 |
 | SEOエージェント | SEO記事構成・執筆のメインUI |
-| 画像生成エージェント | AI画像生成・WordPress連携 |
 
 ### デプロイ順序（重要）
 
@@ -78,7 +77,8 @@
 
 1. **バックエンドサーバー** （他のサービスが参照するため最初）
 2. **SEOエージェント** （メインアプリケーション）
-3. **画像生成エージェント** （SEOエージェントと連携）
+
+画像生成はCloud Runサービスとしてデプロイせず、現行のImage2完成画像フローで実施します。
 
 ---
 
@@ -184,8 +184,6 @@ APIキーなどの機密情報をSecret Managerに保存します。
 | シークレット名 | 説明 | 初期値 |
 |---------------|------|--------|
 | `BACKEND_URL` | バックエンドサーバーURL | `https://placeholder.run.app`（STEP 6後に更新） |
-| `IMAGE_GEN_URL` | 画像生成エージェントURL | `https://placeholder.run.app`（STEP 8後に更新） |
-| `MAIN_APP_URL` | SEOエージェントURL | `https://placeholder.run.app`（STEP 7後に更新） |
 
 #### 必須シークレット（プレースホルダー可）
 
@@ -196,6 +194,7 @@ APIキーなどの機密情報をSecret Managerに保存します。
 | `SUPABASE_URL` | SupabaseプロジェクトURL | 使わない場合は `none` |
 | `SUPABASE_ANON_KEY` | Supabase匿名キー | 使わない場合は `none` |
 | `SLACK_WEBHOOK_URL` | Slack Webhook URL | 使わない場合は `none` |
+| `IMAGE_GEN_URL` | 旧画像生成エージェント連携用（現在は未使用・runtime依存除去まではCloud Buildが参照） | 使わない場合は `none` |
 
 > **注意**: 空欄ではなく `none` などの文字を入力してください。
 > 空のシークレットはバージョンが作成されず、ビルドエラーになります。
@@ -302,7 +301,7 @@ GUIではなくCLIで権限を付与する方法：
 PROJECT_NUMBER=$(gcloud projects describe $(gcloud config get-value project) --format="value(projectNumber)")
 
 # 各シークレットに権限を付与
-for SECRET in GEMINI_API_KEY INTERNAL_API_KEY OPENAI_API_KEY BACKEND_URL IMAGE_GEN_URL MAIN_APP_URL SUPABASE_URL SUPABASE_ANON_KEY SLACK_WEBHOOK_URL; do
+for SECRET in GEMINI_API_KEY INTERNAL_API_KEY OPENAI_API_KEY BACKEND_URL SUPABASE_URL SUPABASE_ANON_KEY SLACK_WEBHOOK_URL; do
   gcloud secrets add-iam-policy-binding $SECRET \
     --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
     --role="roles/secretmanager.secretAccessor"
@@ -415,7 +414,7 @@ ls -la
 
 以下のディレクトリ・ファイルが存在することを確認：
 - `server/` - バックエンドサーバー
-- `ai-article-imager-for-wordpress/` - 画像生成エージェント
+- `_archive/ai-article-imager-for-wordpress_20260718/` - 旧画像生成エージェント（参照専用・実行禁止）
 - `Dockerfile` - SEOエージェント用
 - `nginx.conf` - SEOエージェント用
 - `cloudbuild.yaml` - SEOエージェント用
@@ -599,98 +598,26 @@ STATUS: SUCCESS
 https://seo-frontend-xxxxx-an.a.run.app
 ```
 
-**このURLは STEP 8 および STEP 9 で使用します。**
+**このURLは STEP 9 で使用します。**
 
 ---
 
-## STEP 8: 画像生成エージェントのデプロイ
+## STEP 8: 旧画像生成エージェントのtombstone
 
-### 8.1 MAIN_APP_URL シークレットを更新
+Issue #3670の裁定により、旧 `ai-article-imager-for-wordpress/` は廃止され、
+`_archive/ai-article-imager-for-wordpress_20260718/` に参照専用で退避されました。
 
-STEP 7 でデプロイしたSEOエージェントのURLで、Secret Managerの `MAIN_APP_URL` を更新します。
-
-#### GUIで更新
-
-1. GCPコンソール → **「Secret Manager」**
-2. `MAIN_APP_URL` をクリック
-3. **「新しいバージョン」** をクリック
-4. シークレットの値に STEP 7 のURL（例: `https://seo-frontend-xxxxx-an.a.run.app`）を入力
-5. **「新しいバージョンを追加」** をクリック
-
-### 8.2 ディレクトリに移動
-
-```bash
-cd ~/seo-content-generator/ai-article-imager-for-wordpress
-```
-
-### 8.3 イメージをビルド
-
-```bash
-gcloud builds submit --config=cloudbuild.yaml --region=asia-northeast1
-```
-
-> Secret Managerから直接値を取得するため、`--substitutions` は不要です。
-
-### 8.4 Cloud Runにデプロイ（GUI）
-
-1. GCPコンソール左メニュー → **「Cloud Run」**
-2. **「コンテナをデプロイ」** をクリック
-3. **「既存のコンテナイメージから1つのリビジョンをデプロイする」** を選択
-4. **「コンテナイメージのURL」** → **「選択」** → **「Artifact Registry」** タブ → 以下を展開：
-   - `asia-northeast1`
-   - `seo-app`
-   - `ai-article-imager`
-   - 最新のイメージを選択
-5. **「選択」** をクリック
-
-6. 基本設定：
-
-| 項目 | 値 |
-|------|-----|
-| サービス名 | `ai-article-imager` |
-| リージョン | `asia-northeast1（東京）` |
-| 認証 | **「未認証の呼び出しを許可」** にチェック |
-
-7. **「コンテナ、ボリューム、ネットワーキング、セキュリティ」** を展開
-
-8. **「コンテナ」** タブで以下を設定：
-
-| 項目 | 値 |
-|------|-----|
-| コンテナポート | `8080` |
-| メモリ | `512 MiB` |
-| CPU | `1` |
-| インスタンスの最大数 | `10` |
-
-9. **「作成」** をクリック
-
-### 8.5 URLを記録
-
-デプロイ完了後、表示されるURLを記録してください：
-
-```
-https://ai-article-imager-xxxxx-an.a.run.app
-```
-
-**このURLは STEP 9 で使用します。**
+- archive配下で`npm install`、build、起動、Cloud Runへのデプロイを実行しないでください。
+- 実サービスとしての`ai-article-imager`や実URLとしての`IMAGE_GEN_URL`は新規設定しないでください。ただし、`cloudbuild.yaml`が現時点で`IMAGE_GEN_URL`シークレットをビルド時に参照するため、STEP 3の手順に従いプレースホルダー値（`none`）でのシークレット作成とCloud BuildサービスアカウントへのIAM付与（STEP 3.2参照）は必須です。`cloudbuild.yaml`・`Dockerfile`・runtime callsiteから`IMAGE_GEN_URL`への参照が完全に除去された段階で、このプレースホルダーシークレットも不要になります。
+- 画像が必要な場合は、現行のImage2完成画像フローで作成してください。
 
 ---
 
 ## STEP 9: 環境変数の相互設定
 
-3つのサービスが相互に通信できるよう、URLを設定します。
+バックエンドサーバーとSEOエージェントが通信できるよう、URLを設定します。
 
-### 9.1 IMAGE_GEN_URL シークレットを更新
-
-STEP 8 でデプロイした画像生成エージェントのURLで、Secret Managerの `IMAGE_GEN_URL` を更新します。
-
-1. GCPコンソール → **「Secret Manager」**
-2. `IMAGE_GEN_URL` をクリック
-3. **「新しいバージョン」** をクリック
-4. シークレットの値に STEP 8 のURL（例: `https://ai-article-imager-xxxxx-an.a.run.app`）を入力
-5. **「新しいバージョンを追加」** をクリック
-
-### 9.2 SEOエージェントを再ビルド＆再デプロイ（新しいシークレット値を反映）
+### 9.1 SEOエージェントを再ビルド＆再デプロイ（新しいシークレット値を反映）
 
 SEOエージェントは**ビルド時**に環境変数を埋め込むため、Secret Managerの値を更新した後は**再ビルド**が必要です。
 
@@ -712,7 +639,7 @@ gcloud builds submit --config=cloudbuild.yaml --region=asia-northeast1
 4. Artifact Registry → asia-northeast1 → seo-app → seo-frontend → **最新のイメージ**を選択
 5. **「デプロイ」** をクリック
 
-### 9.3 バックエンドサーバーの環境変数
+### 9.2 バックエンドサーバーの環境変数
 
 Cloud Runで以下の環境変数を設定します。
 
@@ -728,7 +655,6 @@ Cloud Runで以下の環境変数を設定します。
 |--------|-----|------|
 | `NODE_ENV` | `production` | 本番環境モード |
 | `SEO_FRONTEND_URL` | `https://seo-frontend-xxxxx-an.a.run.app` | CORS許可（SEOエージェント） |
-| `IMAGE_AGENT_URL` | `https://ai-article-imager-xxxxx-an.a.run.app` | CORS許可（画像生成エージェント） |
 
 **「シークレットを参照」** で以下を設定：
 
@@ -823,13 +749,13 @@ Slack通知機能を使う場合：
 
 4. **「デプロイ」** をクリック
 
-### 9.2 CLIで設定する場合
+### 9.3 CLIで設定する場合
 
 ```bash
 # 基本設定
 gcloud run services update backend-server \
   --region=asia-northeast1 \
-  --set-env-vars="NODE_ENV=production,SEO_FRONTEND_URL=https://seo-frontend-xxxxx-an.a.run.app,IMAGE_AGENT_URL=https://ai-article-imager-xxxxx-an.a.run.app"
+  --set-env-vars="NODE_ENV=production,SEO_FRONTEND_URL=https://seo-frontend-xxxxx-an.a.run.app"
 
 # シークレットを環境変数として追加（Custom Search APIの場合）
 gcloud run services update backend-server \
@@ -842,7 +768,7 @@ gcloud run services update backend-server \
 #   --set-secrets="INTERNAL_API_KEY=INTERNAL_API_KEY:latest,SERPER_API_KEY=SERPER_API_KEY:latest"
 ```
 
-### 9.3 Cloud Runサービスアカウントへの権限付与
+### 9.4 Cloud Runサービスアカウントへの権限付与
 
 Cloud RunがSecret Managerからシークレットを読み取るには、サービスアカウントに権限が必要です。
 
@@ -873,7 +799,6 @@ done
 |---------|---------|---------------|
 | バックエンド | `https://backend-server-xxx.run.app/api/health` | `{"status":"ok",...}` |
 | SEOエージェント | `https://seo-frontend-xxx.run.app` | UIが表示される |
-| 画像生成 | `https://ai-article-imager-xxx.run.app` | UIが表示される |
 
 ### 10.2 機能テスト
 
@@ -1033,16 +958,9 @@ gcloud builds submit --config=cloudbuild.yaml --region=asia-northeast1
 
 その後、Cloud Run → `seo-frontend` → 「新しいリビジョンの編集とデプロイ」 → 最新イメージを選択 → 「デプロイ」
 
-### 画像生成エージェントの更新
+### 旧画像生成エージェント
 
-```bash
-cd ~/seo-content-generator/ai-article-imager-for-wordpress
-gcloud builds submit --config=cloudbuild.yaml --region=asia-northeast1
-```
-
-> Secret Managerから直接値を取得するため、環境変数の設定は不要です。
-
-その後、Cloud Run → `ai-article-imager` → 「新しいリビジョンの編集とデプロイ」 → 最新イメージを選択 → 「デプロイ」
+更新・再ビルド・再デプロイは禁止です。archiveは参照専用で、画像生成には現行のImage2完成画像フローを使用してください。
 
 ---
 
@@ -1231,7 +1149,6 @@ Google Sheets API has not been used in project XXXXXXX before or it is disabled
 |---------|-----|
 | バックエンドサーバー | `https://backend-server-_____-an.a.run.app` |
 | SEOエージェント | `https://seo-frontend-_____-an.a.run.app` |
-| 画像生成エージェント | `https://ai-article-imager-_____-an.a.run.app` |
 
 ---
 
