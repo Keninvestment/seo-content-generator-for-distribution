@@ -354,7 +354,6 @@ function checkUnsupportedClaims(article: string, violations: Violation[]): void 
   addPatternViolations(violations, article, 'unsupported-claims', 'major', [
     { pattern: /税務リスク(?:の|が)ない/g, message: '税務リスクがないとする保証表現です。' },
     { pattern: /必ず(?:節税|削減|通)/g, message: '効果または結果を保証する表現です。' },
-    { pattern: /100%/g, message: '100%とする絶対的な数値表現です。' },
     {
       pattern: /\d+%から\d+%(?:\*{1,3}|_{1,3})?(?:に|へ)/g,
       message: '根拠の確認が必要な割合改善の実績表現です。',
@@ -365,6 +364,20 @@ function checkUnsupportedClaims(article: string, violations: Violation[]): void 
     },
     { pattern: /業界初|日本一|No\.?1/g, message: '最上級または優位性を断定する表現です。' },
   ]);
+
+  const legalTaxContextMarkers = ['持株割合', '益金不算入', '税率', '控除'];
+  for (const match of article.matchAll(/100%/g)) {
+    const index = match.index ?? 0;
+    const sentence = sentenceContaining(article, index);
+    const hasLegalTaxContext = legalTaxContextMarkers.some((marker) => sentence.includes(marker));
+    if (hasLegalTaxContext) continue;
+    violations.push({
+      rule: 'unsupported-claims',
+      severity: 'major',
+      evidence: contextEvidence(ARTICLE_FILE, article, index, match[0].length),
+      message: '100%とする絶対的な数値表現です。',
+    });
+  }
 }
 
 function sentenceContaining(article: string, index: number): string {
