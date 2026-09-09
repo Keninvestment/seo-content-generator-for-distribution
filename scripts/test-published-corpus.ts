@@ -99,6 +99,29 @@ function hiddenAttributeTextIsIgnored(): void {
   console.log('PASS hidden attribute text is ignored');
 }
 
+function literalLessThanIsPreserved(): void {
+  const shared = paragraph('1 < 2を含む同一の公開本文');
+  const result = run(`# 対象\n\n## 不等号の確認\n${shared}`, {
+    body: `<h2>不等号の確認</h2><p>${shared}</p>`,
+  });
+  check(result.status === 1, `literal less-than text must not evade similarity: ${result.stderr}`);
+  const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
+  check(output.results[0].shingleSim === 1, `literal less-than changed shingles: ${output.results[0].shingleSim}`);
+  console.log('PASS literal less-than text is preserved');
+}
+
+function nestedTemplateTextIsIgnored(): void {
+  const shared = paragraph('入れ子template外の公開本文');
+  const hidden = paragraph('画面に表示されないtemplate内の文字列', 200);
+  const result = run(`# 対象\n\n## 本文の確認\n${shared}`, {
+    body: `<h2>本文の確認</h2><p>${shared}</p><template><template>hidden</template>${hidden}</template>`,
+  });
+  check(result.status === 1, `nested template text must not evade similarity: ${result.stderr}`);
+  const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
+  check(output.results[0].shingleSim === 1, `nested template contaminated shingles: ${output.results[0].shingleSim}`);
+  console.log('PASS nested template text is ignored');
+}
+
 function unrelatedPublishedArticlePasses(): void {
   const result = run(`# 対象\n\n## 採用条件\n${paragraph('採用面接の評価基準')}`);
   check(result.status === 0, `unrelated published article must pass: ${result.stderr}`);
@@ -225,6 +248,8 @@ try {
   publishedDuplicateIsCompared();
   inlineTagsPreserveVisibleText();
   hiddenAttributeTextIsIgnored();
+  literalLessThanIsPreserved();
+  nestedTemplateTextIsIgnored();
   unrelatedPublishedArticlePasses();
   emptyPublishedInventoryFailsClosed();
   missingBodyFailsClosed();

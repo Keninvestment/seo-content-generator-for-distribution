@@ -18,6 +18,7 @@ interface RunOptions {
   source?: string;
   sourceBytes?: Buffer;
   maxConsecutive?: number;
+  orphanHistoryArticle?: boolean;
 }
 
 function run(options: RunOptions = {}) {
@@ -48,6 +49,11 @@ function run(options: RunOptions = {}) {
     const itemDirectory = resolve(historyDirectory, String(index));
     mkdirSync(itemDirectory);
     writeFileSync(resolve(itemDirectory, 'meta.yaml'), yaml.dump(item), 'utf8');
+  }
+  if (options.orphanHistoryArticle) {
+    const orphanDirectory = resolve(historyDirectory, 'orphan');
+    mkdirSync(orphanDirectory);
+    writeFileSync(resolve(orphanDirectory, 'article_final.md'), '# 履歴記事\n\n型不明の記事本文。\n', 'utf8');
   }
   try {
     return spawnSync(
@@ -162,6 +168,15 @@ function incompleteHistoryFailsClosed(): void {
   console.log('PASS incomplete history fail-closed');
 }
 
+function missingHistoryMetaFailsClosed(): void {
+  const result = run({
+    history: [history('one', '2026-09-08T10:00:00+09:00', '比較・判断型')],
+    orphanHistoryArticle: true,
+  });
+  check(result.status === 2 && result.stderr.includes('missing meta.yaml'), 'article without history meta must fail');
+  console.log('PASS missing history metadata fail-closed');
+}
+
 function duplicateHistoryProvenanceFails(): void {
   const result = run({
     history: [
@@ -188,6 +203,7 @@ try {
   backdatedTargetFailsClosed();
   invalidUtf8SourceFailsClosed();
   incompleteHistoryFailsClosed();
+  missingHistoryMetaFailsClosed();
   duplicateHistoryProvenanceFails();
   oversizedSourceFailsClosed();
   console.log('ALL PASS');

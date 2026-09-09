@@ -122,6 +122,13 @@ async function collectMetaFiles(directory: string): Promise<string[]> {
   if (!info.isDirectory()) fail('--history must be a directory');
   const entries = await readdir(directory, { withFileTypes: true });
   entries.sort((left, right) => left.name.localeCompare(right.name, 'en'));
+  const hasArticle = entries.some(
+    (entry) => entry.isFile() && /^article_.*\.md$/iu.test(entry.name),
+  );
+  const hasMeta = entries.some(
+    (entry) => entry.isFile() && entry.name.toLowerCase() === 'meta.yaml',
+  );
+  if (hasArticle && !hasMeta) fail(`history article directory is missing meta.yaml: ${directory}`);
   const result: string[] = [];
   for (const entry of entries) {
     const path = resolve(directory, entry.name);

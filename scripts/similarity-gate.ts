@@ -153,6 +153,30 @@ function findTagEnd(html: string, from: number): number {
   return -1;
 }
 
+function skipNestedTemplate(html: string, from: number): number {
+  let depth = 1;
+  let index = from;
+  while (index < html.length) {
+    const tagStart = html.indexOf('<', index);
+    if (tagStart < 0) return html.length;
+    if (html.startsWith('<!--', tagStart)) {
+      const commentEnd = html.indexOf('-->', tagStart + 4);
+      if (commentEnd < 0) return html.length;
+      index = commentEnd + 3;
+      continue;
+    }
+    const tagEnd = findTagEnd(html, tagStart + 1);
+    if (tagEnd < 0) return html.length;
+    const match = html.slice(tagStart + 1, tagEnd).match(/^\s*(\/?)\s*template\b/iu);
+    if (match) {
+      depth += match[1] === '/' ? -1 : 1;
+      if (depth === 0) return tagEnd + 1;
+    }
+    index = tagEnd + 1;
+  }
+  return html.length;
+}
+
 function htmlToMarkdown(html: string): string {
   const lowerHtml = html.toLowerCase();
   const output: string[] = [];
@@ -179,15 +203,23 @@ function htmlToMarkdown(html: string): string {
     }
     const tagEnd = findTagEnd(html, index + 1);
     if (tagEnd < 0) {
+      if (!/^<\s*(?:[a-z]|\/?[a-z]|!|\?)/iu.test(html.slice(index))) {
+        output.push(html.slice(index));
+      }
       break;
     }
     const tagMatch = html.slice(index + 1, tagEnd).match(/^\s*(\/?)\s*([a-z][a-z0-9]*)\b/iu);
     if (!tagMatch) {
-      index = tagEnd + 1;
+      output.push('<');
+      index += 1;
       continue;
     }
     const closing = tagMatch[1] === '/';
     const tagName = tagMatch[2].toLowerCase();
+    if (!closing && tagName === 'template') {
+      index = skipNestedTemplate(html, tagEnd + 1);
+      continue;
+    }
     if (!closing && rawTags.has(tagName)) {
       const closeStart = findRawClose(lowerHtml, tagName, tagEnd + 1);
       if (closeStart < 0) break;
