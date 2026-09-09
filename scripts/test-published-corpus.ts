@@ -134,6 +134,24 @@ function templateScriptTextIsIgnored(): void {
   console.log('PASS template script raw text is ignored');
 }
 
+function hiddenDomSubtreesAreIgnored(): void {
+  const shared = paragraph('表示される同一の公開本文', 70);
+  const hidden = paragraph('表示されないDOM subtreeの大量文字列', 500);
+  for (const hiddenMarkup of [
+    `<div hidden>${hidden}</div>`,
+    `<noscript>${hidden}</noscript>`,
+    `<div style="display: none !important">${hidden}</div>`,
+    `<div aria-hidden="true">${hidden}</div>`,
+    `<div inert>${hidden}</div>`,
+  ]) {
+    const result = run(`# 対象\n\n${shared}`, { body: `<p>${shared}</p>${hiddenMarkup}` });
+    check(result.status === 1, `hidden DOM subtree must not evade similarity: ${result.stderr}`);
+    const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
+    check(output.results[0].shingleSim === 1, `hidden DOM text contaminated shingles: ${output.results[0].shingleSim}`);
+  }
+  console.log('PASS hidden DOM subtrees are ignored');
+}
+
 function literalLessThanRunIsBounded(): void {
   const shared = paragraph('大量のliteral less-than後にある公開本文', 70);
   const body = `${'<'.repeat(80_000)}><p>${shared}</p>`;
@@ -274,6 +292,7 @@ try {
   literalLessThanIsPreserved();
   nestedTemplateTextIsIgnored();
   templateScriptTextIsIgnored();
+  hiddenDomSubtreesAreIgnored();
   literalLessThanRunIsBounded();
   unrelatedPublishedArticlePasses();
   emptyPublishedInventoryFailsClosed();

@@ -114,7 +114,18 @@ const BLOCK_TAGS = new Set([
   'footer', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'section', 'table', 'tbody',
   'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
 ]);
-const EXCLUDED_TAGS = new Set(['script', 'style', 'template', 'title']);
+const EXCLUDED_TAGS = new Set(['noscript', 'script', 'style', 'template', 'title']);
+
+function isHiddenElement(node: DefaultTreeAdapterTypes.Element): boolean {
+  const attributes = new Map(node.attrs.map((attribute) => [attribute.name.toLowerCase(), attribute.value]));
+  if (attributes.has('hidden') || attributes.has('inert')) return true;
+  if (attributes.get('aria-hidden')?.trim().toLowerCase() === 'true') return true;
+  const style = attributes.get('style');
+  if (!style) return false;
+  return /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|content-visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)/iu.test(
+    style,
+  );
+}
 
 function appendVisibleText(node: DefaultTreeAdapterTypes.Node, output: string[]): void {
   if ('value' in node) {
@@ -124,6 +135,7 @@ function appendVisibleText(node: DefaultTreeAdapterTypes.Node, output: string[])
   if (!('childNodes' in node)) return;
   const tagName = 'tagName' in node ? node.tagName.toLowerCase() : undefined;
   if (tagName && EXCLUDED_TAGS.has(tagName)) return;
+  if ('tagName' in node && isHiddenElement(node)) return;
   if (tagName === 'h2' || tagName === 'h3') {
     output.push(`\n${tagName === 'h2' ? '##' : '###'} `);
   } else if (tagName && BLOCK_TAGS.has(tagName)) {
