@@ -173,6 +173,11 @@ function inlineVisibilityCssFailsClosed(): void {
     check(result.status === 2, `inline visibility CSS must exit 2: ${style}`);
     check(result.stderr.includes('unsupported inline visibility CSS'), 'visibility CSS error missing');
   }
+  const hiddenOverride = run(`# 対象\n\n${shared}`, {
+    body: `<p hidden style="display:block">${shared}</p>`,
+  });
+  check(hiddenOverride.status === 2, 'hidden with inline display override must exit 2');
+  check(hiddenOverride.stderr.includes('unsupported inline visibility CSS'), 'hidden override error missing');
   console.log('PASS inline visibility CSS fail-closed');
 }
 

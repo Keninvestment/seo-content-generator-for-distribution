@@ -118,17 +118,15 @@ const EXCLUDED_TAGS = new Set(['noscript', 'script', 'style', 'template', 'title
 
 function isHiddenElement(node: DefaultTreeAdapterTypes.Element): boolean {
   const attributes = new Map(node.attrs.map((attribute) => [attribute.name.toLowerCase(), attribute.value]));
-  if (attributes.has('hidden')) return true;
   const style = attributes.get('style');
-  if (!style) return false;
-  if (
+  if (style && (
     /(?:^|;)\s*(?:display|visibility|content-visibility)\s*:/iu.test(style) ||
     style.includes('\\') ||
     style.includes('/*')
-  ) {
+  )) {
     argumentError('published HTML contains unsupported inline visibility CSS');
   }
-  return false;
+  return attributes.has('hidden');
 }
 
 function appendVisibleText(node: DefaultTreeAdapterTypes.Node, output: string[]): void {
