@@ -40,6 +40,7 @@ const MIN_NON_ARTICLE_LENGTH = 500;
 const MAX_RESULTS = 10;
 const MAX_INVENTORY_BYTES = 20 * 1024 * 1024;
 const MAX_PUBLISHED_BODY_BYTES = 2 * 1024 * 1024;
+const PUBLISHED_ORIGIN = 'https://ownersoffice.co.jp';
 const USAGE =
   'Usage: npx tsx scripts/similarity-gate.ts <target.md> --corpus <dir> [--published-inventory <published_articles.json>] [--threshold-heading 0.6] [--threshold-shingle 0.25]';
 
@@ -124,16 +125,71 @@ function decodeHtmlEntities(value: string): string {
   });
 }
 
+function findRawClose(lowerHtml: string, tagName: string, from: number): number {
+  let searchFrom = from;
+  const prefix = `</${tagName}`;
+  while (searchFrom < lowerHtml.length) {
+    const candidate = lowerHtml.indexOf(prefix, searchFrom);
+    if (candidate < 0) return -1;
+    const boundary = lowerHtml[candidate + prefix.length];
+    if (boundary === '>' || boundary === undefined || /\s/u.test(boundary)) return candidate;
+    searchFrom = candidate + prefix.length;
+  }
+  return -1;
+}
+
 function htmlToMarkdown(html: string): string {
-  const withoutUnsafeBlocks = html
-    .replace(/<!--[^]*?-->/gu, ' ')
-    .replace(/<(script|style|template)\b[^>]*>[^]*?<\/\1\s*>/giu, ' ');
-  const withHeadings = withoutUnsafeBlocks
-    .replace(/<h2\b[^>]*>([^]*?)<\/h2\s*>/giu, (_match, value: string) => `\n## ${value}\n`)
-    .replace(/<h3\b[^>]*>([^]*?)<\/h3\s*>/giu, (_match, value: string) => `\n### ${value}\n`)
-    .replace(/<\/?(?:p|div|section|article|li|ul|ol|blockquote|br|hr)\b[^>]*>/giu, '\n')
-    .replace(/<[^>]+>/gu, ' ');
-  return decodeHtmlEntities(withHeadings)
+  const lowerHtml = html.toLowerCase();
+  const output: string[] = [];
+  const blockTags = new Set([
+    'article', 'aside', 'blockquote', 'br', 'dd', 'div', 'dl', 'dt', 'figcaption', 'figure',
+    'footer', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'section', 'table', 'tbody',
+    'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+  ]);
+  const rawTags = new Set(['script', 'style', 'template']);
+  let index = 0;
+  while (index < html.length) {
+    if (html.startsWith('<!--', index)) {
+      const commentEnd = html.indexOf('-->', index + 4);
+      if (commentEnd < 0) break;
+      index = commentEnd + 3;
+      continue;
+    }
+    if (html[index] !== '<') {
+      const nextTag = html.indexOf('<', index);
+      const end = nextTag < 0 ? html.length : nextTag;
+      output.push(html.slice(index, end));
+      index = end;
+      continue;
+    }
+    const tagEnd = html.indexOf('>', index + 1);
+    if (tagEnd < 0) {
+      output.push(html.slice(index));
+      break;
+    }
+    const tagMatch = html.slice(index + 1, tagEnd).match(/^\s*(\/?)\s*([a-z][a-z0-9]*)\b/iu);
+    if (!tagMatch) {
+      index = tagEnd + 1;
+      continue;
+    }
+    const closing = tagMatch[1] === '/';
+    const tagName = tagMatch[2].toLowerCase();
+    if (!closing && rawTags.has(tagName)) {
+      const closeStart = findRawClose(lowerHtml, tagName, tagEnd + 1);
+      if (closeStart < 0) break;
+      const closeEnd = html.indexOf('>', closeStart + tagName.length + 2);
+      index = closeEnd < 0 ? html.length : closeEnd + 1;
+      continue;
+    }
+    if (!closing && (tagName === 'h2' || tagName === 'h3')) {
+      output.push(`\n${tagName === 'h2' ? '##' : '###'} `);
+    } else if ((closing && (tagName === 'h2' || tagName === 'h3')) || blockTags.has(tagName)) {
+      output.push('\n');
+    }
+    // Inline tags intentionally add no separator: visible text adjacency must be preserved.
+    index = tagEnd + 1;
+  }
+  return decodeHtmlEntities(output.join(''))
     .replace(/[\t\f\v ]+/gu, ' ')
     .replace(/\s*\n\s*/gu, '\n')
     .replace(/\n{3,}/gu, '\n\n')
@@ -157,7 +213,18 @@ function safePublishedUrl(value: unknown, field: string): URL {
   ) {
     argumentError(`${field} must be a public HTTPS URL without credentials, query, or fragment`);
   }
+  if (parsed.origin !== PUBLISHED_ORIGIN) {
+    argumentError(`${field} must use the canonical published origin`);
+  }
   return parsed;
+}
+
+function decodeUtf8Strict(bytes: Uint8Array, label: string): string {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    argumentError(`${label} must be valid UTF-8`);
+  }
 }
 
 async function loadPublishedArticles(path: string): Promise<PublishedArticle[]> {
@@ -165,7 +232,7 @@ async function loadPublishedArticles(path: string): Promise<PublishedArticle[]> 
   if (!inventoryStat.isFile() || inventoryStat.size > MAX_INVENTORY_BYTES) {
     argumentError(`published inventory must be a file no larger than ${MAX_INVENTORY_BYTES} bytes`);
   }
-  const raw = await readFile(path, 'utf8');
+  const raw = decodeUtf8Strict(await readFile(path), 'published inventory');
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -176,6 +243,9 @@ async function loadPublishedArticles(path: string): Promise<PublishedArticle[]> 
     argumentError('published inventory requires schema_version=1 and source provenance');
   }
   const site = safePublishedUrl(value.source.site, 'source.site');
+  if (site.origin !== PUBLISHED_ORIGIN || site.pathname !== '/') {
+    argumentError(`source.site must be exactly ${PUBLISHED_ORIGIN}`);
+  }
   if (typeof value.synced_at !== 'string' || !Number.isFinite(Date.parse(value.synced_at))) {
     argumentError('published inventory requires a valid synced_at');
   }
@@ -210,9 +280,14 @@ async function loadPublishedArticles(path: string): Promise<PublishedArticle[]> 
     if (typeof item.content_sha256 !== 'string' || item.content_sha256.toLowerCase() !== digest) {
       argumentError(`${prefix}.content_sha256 does not match content_html`);
     }
+    const markdown = htmlToMarkdown(item.content_html);
+    const features = articleFeatures(markdown);
+    if (Array.from(extractBody(markdown)).length < MIN_NON_ARTICLE_LENGTH || features.shingles.size === 0) {
+      argumentError(`${prefix}.content_html has insufficient comparison text`);
+    }
     articles.push({
       identifier: `published:${id}:${link.href}:sha256:${digest}`,
-      markdown: htmlToMarkdown(item.content_html),
+      markdown,
     });
   }
   return articles;

@@ -16,6 +16,7 @@ interface RunOptions {
   target?: Record<string, unknown>;
   history?: Record<string, unknown>[];
   source?: string;
+  sourceBytes?: Buffer;
   maxConsecutive?: number;
 }
 
@@ -26,6 +27,7 @@ function run(options: RunOptions = {}) {
   mkdirSync(targetDirectory);
   mkdirSync(historyDirectory);
   const source = options.source ?? '# 根拠\n\n[E1] 検索意図と制度上の論点を記録。\n';
+  const sourceBytes = options.sourceBytes ?? Buffer.from(source, 'utf8');
   const sourcePath = resolve(targetDirectory, 'evidence_pack.md');
   const targetPath = resolve(targetDirectory, 'meta.yaml');
   const target = options.target ?? {
@@ -35,12 +37,12 @@ function run(options: RunOptions = {}) {
     article_type: '比較・判断型',
     article_type_source: {
       path: 'evidence_pack.md',
-      sha256: createHash('sha256').update(source, 'utf8').digest('hex'),
+      sha256: createHash('sha256').update(sourceBytes).digest('hex'),
       basis: 'both',
       rationale: '比較条件を求める検索意図と、複数の判断軸を含む根拠に基づく。',
     },
   };
-  writeFileSync(sourcePath, source, 'utf8');
+  writeFileSync(sourcePath, sourceBytes);
   writeFileSync(targetPath, yaml.dump(target), 'utf8');
   for (const [index, item] of (options.history ?? []).entries()) {
     const itemDirectory = resolve(historyDirectory, String(index));
@@ -120,6 +122,40 @@ function differentTypeAvoidsOverDetection(): void {
   console.log('PASS non-consecutive reuse');
 }
 
+function backdatedTargetFailsClosed(): void {
+  const result = run({
+    target: {
+      slug: 'target', keyword: '法人の資金計画', created_at: '2026-09-07T10:00:00+09:00',
+      article_type: '比較・判断型',
+      article_type_source: {
+        path: 'evidence_pack.md',
+        sha256: createHash('sha256').update('# 根拠\n\n[E1] 検索意図と制度上の論点を記録。\n', 'utf8').digest('hex'),
+        basis: 'both', rationale: '検索意図と根拠に基づく。',
+      },
+    },
+    history: [history('later', '2026-09-08T10:00:00+09:00', '解説型')],
+  });
+  check(result.status === 2 && result.stderr.includes('strictly later'), 'backdated target must fail closed');
+  console.log('PASS target chronology fail-closed');
+}
+
+function invalidUtf8SourceFailsClosed(): void {
+  const sourceBytes = Buffer.from([0xff]);
+  const result = run({
+    sourceBytes,
+    target: {
+      slug: 'target', keyword: '法人の資金計画', created_at: '2026-09-09T10:00:00+09:00',
+      article_type: '解説型',
+      article_type_source: {
+        path: 'evidence_pack.md', sha256: createHash('sha256').update(sourceBytes).digest('hex'),
+        basis: 'evidence_pack', rationale: '根拠に基づく。',
+      },
+    },
+  });
+  check(result.status === 2 && result.stderr.includes('must be valid UTF-8'), 'invalid UTF-8 must fail');
+  console.log('PASS strict UTF-8 source');
+}
+
 function incompleteHistoryFailsClosed(): void {
   const result = run({ history: [{ slug: 'one', created_at: '2026-09-08T10:00:00+09:00' }] });
   check(result.status === 2 && result.stderr.includes('article_type is required'), 'incomplete history must fail');
@@ -149,6 +185,8 @@ try {
   changedSourceFails();
   consecutiveTypeFails();
   differentTypeAvoidsOverDetection();
+  backdatedTargetFailsClosed();
+  invalidUtf8SourceFailsClosed();
   incompleteHistoryFailsClosed();
   duplicateHistoryProvenanceFails();
   oversizedSourceFailsClosed();

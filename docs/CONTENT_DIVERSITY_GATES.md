@@ -37,7 +37,7 @@ The inventory contract is:
 }
 ```
 
-The gate rejects missing bodies, digest mismatches, duplicate IDs or links, cross-origin links, non-public URL forms, and oversized input. HTML is normalized locally and deterministically. Output contains only public provenance and the body digest, never the body. Keep the inventory in the runtime data location; do not commit published bodies to this repository.
+The gate rejects missing or non-content bodies, digest mismatches, duplicate IDs or links, any origin other than canonical `https://ownersoffice.co.jp`, non-public URL forms, invalid UTF-8 inventory data, and oversized input. HTML is normalized locally with a bounded linear scan: inline markup preserves visible text adjacency, while block elements create comparison boundaries. Output contains only public provenance and the body digest, never the body. Keep the inventory in the runtime data location; do not commit published bodies to this repository.
 
 ## Source-enforced article type
 
@@ -63,4 +63,4 @@ npx tsx scripts/article-type-gate.ts /absolute/run/meta.yaml \
   --history /absolute/lane_queue
 ```
 
-The default maximum is two consecutive articles of the same type. Missing or invalid history metadata, duplicate slug/timestamp provenance, a changed source, or a third consecutive type exits with status 2. `--max-consecutive` may be set from 1 to 20 when the caller has an explicit policy, but the gate never infers or repairs metadata.
+The default maximum is two consecutive articles of the same type. The source is decoded as strict UTF-8 and its digest is calculated from the exact file bytes. Every history timestamp must be unique and strictly earlier than the target, so backdating cannot bypass the sequence check. Missing or invalid history metadata, duplicate slug/timestamp provenance, a changed source, or a third consecutive type exits with status 2. `--max-consecutive` may be set from 1 to 20 when the caller has an explicit policy, but the gate never infers or repairs metadata.

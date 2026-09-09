@@ -73,6 +73,20 @@ function publishedDuplicateIsCompared(): void {
   console.log('PASS published body comparison');
 }
 
+function inlineTagsPreserveVisibleText(): void {
+  const visible = paragraph('同一の公開本文でインライン装飾を確認');
+  const tagged = Array.from(visible)
+    .map((character, index) => (index % 4 === 0 ? `<strong>${character}</strong>` : character))
+    .join('');
+  const result = run(`# 対象\n\n## 装飾の確認\n${visible}`, {
+    body: `<h2>装飾の確認</h2><p>${tagged}</p>`,
+  });
+  check(result.status === 1, `inline-tagged identical text must fail similarity: ${result.stderr}`);
+  const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
+  check(output.results[0].shingleSim === 1, `inline tags changed visible shingles: ${output.results[0].shingleSim}`);
+  console.log('PASS inline tags preserve text adjacency');
+}
+
 function unrelatedPublishedArticlePasses(): void {
   const result = run(`# 対象\n\n## 採用条件\n${paragraph('採用面接の評価基準')}`);
   check(result.status === 0, `unrelated published article must pass: ${result.stderr}`);
@@ -115,6 +129,18 @@ function changedBodyFailsClosed(): void {
   console.log('PASS published body digest fail-closed');
 }
 
+function nonContentBodyFailsClosed(): void {
+  for (const body of [
+    `<!--${'comment'.repeat(100)}-->`,
+    `<script>${'privateScriptData'.repeat(100)}</script>`,
+  ]) {
+    const result = run('# 対象\n本文', { body });
+    check(result.status === 2, `non-content body must exit 2, got ${result.status}`);
+    check(result.stderr.includes('insufficient comparison text'), 'non-content body error missing');
+  }
+  console.log('PASS non-content body fail-closed');
+}
+
 function unsafeUrlFailsClosed(): void {
   const result = run('# 対象\n本文', {
     mutate: (inventory) => {
@@ -127,6 +153,32 @@ function unsafeUrlFailsClosed(): void {
   console.log('PASS privacy-safe URL provenance');
 }
 
+function nonCanonicalHostFailsClosed(): void {
+  for (const site of ['https://127.0.0.1', 'https://localhost', 'https://10.0.0.1']) {
+    const result = run('# 対象\n本文', {
+      mutate: (inventory) => {
+        inventory.source = { site };
+        const posts = inventory.posts as Record<string, unknown>[];
+        posts[0].link = `${site}/private/`;
+      },
+    });
+    check(result.status === 2, `non-canonical host ${site} must exit 2`);
+    check(result.stderr.includes('canonical published origin'), 'canonical origin error missing');
+  }
+  console.log('PASS private and loopback hosts fail-closed');
+}
+
+function unclosedRawTagIsBounded(): void {
+  const body = '<script>'.repeat(Math.floor((1.5 * 1024 * 1024) / 8));
+  const startedAt = Date.now();
+  const result = run('# 対象\n本文', { body });
+  const elapsed = Date.now() - startedAt;
+  check(result.status === 2, `unclosed script corpus must exit 2, got ${result.status}`);
+  check(result.stderr.includes('insufficient comparison text'), 'unclosed script error missing');
+  check(elapsed < 5000, `unclosed script normalization exceeded 5s: ${elapsed}ms`);
+  console.log(`PASS unclosed raw tag bounded (${elapsed}ms)`);
+}
+
 function oversizedBodyFailsClosed(): void {
   const body = 'あ'.repeat(2 * 1024 * 1024);
   const result = run('# 対象\n本文', { body });
@@ -137,11 +189,15 @@ function oversizedBodyFailsClosed(): void {
 
 try {
   publishedDuplicateIsCompared();
+  inlineTagsPreserveVisibleText();
   unrelatedPublishedArticlePasses();
   missingBodyFailsClosed();
   duplicateProvenanceFailsClosed();
   changedBodyFailsClosed();
+  nonContentBodyFailsClosed();
   unsafeUrlFailsClosed();
+  nonCanonicalHostFailsClosed();
+  unclosedRawTagIsBounded();
   oversizedBodyFailsClosed();
   console.log('ALL PASS');
 } catch (error) {

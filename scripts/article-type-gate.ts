@@ -74,12 +74,24 @@ function parseArguments(args: string[]): ParsedArguments {
   return { meta: resolve(meta), source: resolve(source), history: resolve(history), maxConsecutive };
 }
 
-async function readBounded(path: string, maximumBytes: number, label: string): Promise<string> {
+interface BoundedFile {
+  bytes: Buffer;
+  text: string;
+}
+
+async function readBounded(path: string, maximumBytes: number, label: string): Promise<BoundedFile> {
   const info = await stat(path);
   if (!info.isFile() || info.size > maximumBytes) {
     fail(`${label} must be a file no larger than ${maximumBytes} bytes`);
   }
-  return readFile(path, 'utf8');
+  const bytes = await readFile(path);
+  let text: string;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    fail(`${label} must be valid UTF-8`);
+  }
+  return { bytes, text };
 }
 
 function parseYamlRecord(raw: string, label: string): Record<string, unknown> {
@@ -126,7 +138,7 @@ async function historicalRecords(history: string, targetPath: string): Promise<M
   for (const path of await collectMetaFiles(history)) {
     if (path === targetPath) continue;
     const raw = await readBounded(path, MAX_META_BYTES, `history meta ${path}`);
-    const meta = parseYamlRecord(raw, `history meta ${path}`);
+    const meta = parseYamlRecord(raw.text, `history meta ${path}`);
     const articleType = requiredString(meta.article_type, `${path}: article_type`);
     if (!ALLOWED_ARTICLE_TYPES.includes(articleType as (typeof ALLOWED_ARTICLE_TYPES)[number])) {
       fail(`${path}: article_type is not allowed`);
@@ -145,7 +157,7 @@ async function historicalRecords(history: string, targetPath: string): Promise<M
 
 async function runGate(args: ParsedArguments): Promise<GateResult> {
   const metaRaw = await readBounded(args.meta, MAX_META_BYTES, 'meta');
-  const meta = parseYamlRecord(metaRaw, 'meta');
+  const meta = parseYamlRecord(metaRaw.text, 'meta');
   const articleType = requiredString(meta.article_type, 'article_type');
   if (!ALLOWED_ARTICLE_TYPES.includes(articleType as (typeof ALLOWED_ARTICLE_TYPES)[number])) {
     fail(`article_type must be one of: ${ALLOWED_ARTICLE_TYPES.join(', ')}`);
@@ -167,18 +179,20 @@ async function runGate(args: ParsedArguments): Promise<GateResult> {
   if (recordedSource !== args.source) fail('--source does not match article_type_source.path');
   if (!/^[0-9a-f]{64}$/u.test(sourceDigest)) fail('article_type_source.sha256 must be lowercase SHA-256');
   const sourceRaw = await readBounded(args.source, MAX_SOURCE_BYTES, 'article type source');
-  if (sourceRaw.trim() === '') fail('article type source must not be empty');
-  const actualDigest = createHash('sha256').update(sourceRaw, 'utf8').digest('hex');
+  if (sourceRaw.text.trim() === '') fail('article type source must not be empty');
+  const actualDigest = createHash('sha256').update(sourceRaw.bytes).digest('hex');
   if (actualDigest !== sourceDigest) fail('article_type_source.sha256 does not match --source');
 
   const records = await historicalRecords(args.history, args.meta);
   if (records.some((record) => record.slug === slug || record.createdAt === createdAt)) {
     fail('target duplicates history slug or created_at provenance');
   }
-  const earlier = records.filter((record) => record.createdAt < createdAt);
+  if (records.some((record) => record.createdAt >= createdAt)) {
+    fail('target created_at must be strictly later than every history record');
+  }
   let consecutiveCount = 1;
-  for (let index = earlier.length - 1; index >= 0; index -= 1) {
-    if (earlier[index].articleType !== articleType) break;
+  for (let index = records.length - 1; index >= 0; index -= 1) {
+    if (records[index].articleType !== articleType) break;
     consecutiveCount += 1;
   }
   if (consecutiveCount > args.maxConsecutive) {
