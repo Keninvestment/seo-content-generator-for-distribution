@@ -87,6 +87,18 @@ function inlineTagsPreserveVisibleText(): void {
   console.log('PASS inline tags preserve text adjacency');
 }
 
+function hiddenAttributeTextIsIgnored(): void {
+  const visible = paragraph('属性値を除外して比較する公開本文');
+  const hidden = paragraph('画面に表示されない属性内の文字列', 80);
+  const result = run(`# 対象\n\n## 属性の確認\n${visible}`, {
+    body: `<h2 data-label=">見出しではない">属性の確認</h2><p title=">${hidden}">${visible}</p>`,
+  });
+  check(result.status === 1, `hidden attribute text must not evade similarity: ${result.stderr}`);
+  const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
+  check(output.results[0].shingleSim === 1, `attribute text contaminated shingles: ${output.results[0].shingleSim}`);
+  console.log('PASS hidden attribute text is ignored');
+}
+
 function unrelatedPublishedArticlePasses(): void {
   const result = run(`# 対象\n\n## 採用条件\n${paragraph('採用面接の評価基準')}`);
   check(result.status === 0, `unrelated published article must pass: ${result.stderr}`);
@@ -103,6 +115,17 @@ function missingBodyFailsClosed(): void {
   check(result.status === 2, `missing body must exit 2, got ${result.status}`);
   check(result.stderr.includes('content_html must contain'), 'missing body error is not explicit');
   console.log('PASS missing body fail-closed');
+}
+
+function emptyPublishedInventoryFailsClosed(): void {
+  const result = run('# 対象\n本文', {
+    mutate: (inventory) => {
+      inventory.posts = [];
+    },
+  });
+  check(result.status === 2, `empty published inventory must exit 2, got ${result.status}`);
+  check(result.stderr.includes('posts must not be empty'), 'empty inventory error missing');
+  console.log('PASS empty published inventory fail-closed');
 }
 
 function duplicateProvenanceFailsClosed(): void {
@@ -179,6 +202,17 @@ function unclosedRawTagIsBounded(): void {
   console.log(`PASS unclosed raw tag bounded (${elapsed}ms)`);
 }
 
+function unclosedQuotedTagIsRejected(): void {
+  const body = `<p title="${'nonVisibleAttribute'.repeat(50_000)}`;
+  const startedAt = Date.now();
+  const result = run('# 対象\n本文', { body });
+  const elapsed = Date.now() - startedAt;
+  check(result.status === 2, `unclosed quoted tag must exit 2, got ${result.status}`);
+  check(result.stderr.includes('insufficient comparison text'), 'unclosed quoted tag error missing');
+  check(elapsed < 5000, `unclosed quoted tag scan exceeded 5s: ${elapsed}ms`);
+  console.log(`PASS unclosed quoted tag rejected (${elapsed}ms)`);
+}
+
 function oversizedBodyFailsClosed(): void {
   const body = 'あ'.repeat(2 * 1024 * 1024);
   const result = run('# 対象\n本文', { body });
@@ -190,7 +224,9 @@ function oversizedBodyFailsClosed(): void {
 try {
   publishedDuplicateIsCompared();
   inlineTagsPreserveVisibleText();
+  hiddenAttributeTextIsIgnored();
   unrelatedPublishedArticlePasses();
+  emptyPublishedInventoryFailsClosed();
   missingBodyFailsClosed();
   duplicateProvenanceFailsClosed();
   changedBodyFailsClosed();
@@ -198,6 +234,7 @@ try {
   unsafeUrlFailsClosed();
   nonCanonicalHostFailsClosed();
   unclosedRawTagIsBounded();
+  unclosedQuotedTagIsRejected();
   oversizedBodyFailsClosed();
   console.log('ALL PASS');
 } catch (error) {

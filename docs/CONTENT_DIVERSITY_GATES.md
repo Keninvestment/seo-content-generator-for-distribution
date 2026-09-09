@@ -37,7 +37,7 @@ The inventory contract is:
 }
 ```
 
-The gate rejects missing or non-content bodies, digest mismatches, duplicate IDs or links, any origin other than canonical `https://ownersoffice.co.jp`, non-public URL forms, invalid UTF-8 inventory data, and oversized input. HTML is normalized locally with a bounded linear scan: inline markup preserves visible text adjacency, while block elements create comparison boundaries. Output contains only public provenance and the body digest, never the body. Keep the inventory in the runtime data location; do not commit published bodies to this repository.
+The gate rejects an empty published inventory, missing or non-content bodies, digest mismatches, duplicate IDs or links, any origin other than canonical `https://ownersoffice.co.jp`, non-public URL forms, invalid UTF-8 inventory data, and oversized input. HTML is normalized locally with a bounded linear scan: inline markup preserves visible text adjacency, quoted attribute values are ignored, and block elements create comparison boundaries. Output contains only public provenance and the body digest, never the body. Keep the inventory in the runtime data location; do not commit published bodies to this repository.
 
 ## Source-enforced article type
 

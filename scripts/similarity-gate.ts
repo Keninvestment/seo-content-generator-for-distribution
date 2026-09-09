@@ -138,6 +138,21 @@ function findRawClose(lowerHtml: string, tagName: string, from: number): number 
   return -1;
 }
 
+function findTagEnd(html: string, from: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let index = from; index < html.length; index += 1) {
+    const character = html[index];
+    if (quote !== null) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '>') {
+      return index;
+    }
+  }
+  return -1;
+}
+
 function htmlToMarkdown(html: string): string {
   const lowerHtml = html.toLowerCase();
   const output: string[] = [];
@@ -162,9 +177,8 @@ function htmlToMarkdown(html: string): string {
       index = end;
       continue;
     }
-    const tagEnd = html.indexOf('>', index + 1);
+    const tagEnd = findTagEnd(html, index + 1);
     if (tagEnd < 0) {
-      output.push(html.slice(index));
       break;
     }
     const tagMatch = html.slice(index + 1, tagEnd).match(/^\s*(\/?)\s*([a-z][a-z0-9]*)\b/iu);
@@ -177,7 +191,7 @@ function htmlToMarkdown(html: string): string {
     if (!closing && rawTags.has(tagName)) {
       const closeStart = findRawClose(lowerHtml, tagName, tagEnd + 1);
       if (closeStart < 0) break;
-      const closeEnd = html.indexOf('>', closeStart + tagName.length + 2);
+      const closeEnd = findTagEnd(html, closeStart + tagName.length + 2);
       index = closeEnd < 0 ? html.length : closeEnd + 1;
       continue;
     }
@@ -250,6 +264,7 @@ async function loadPublishedArticles(path: string): Promise<PublishedArticle[]> 
     argumentError('published inventory requires a valid synced_at');
   }
   if (!Array.isArray(value.posts)) argumentError('published inventory posts must be an array');
+  if (value.posts.length === 0) argumentError('published inventory posts must not be empty');
 
   const seenIds = new Set<number>();
   const seenLinks = new Set<string>();
