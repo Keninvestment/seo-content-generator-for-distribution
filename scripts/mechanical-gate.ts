@@ -380,9 +380,14 @@ function isStatutoryPercentage(article: string, index: number): boolean {
   // In particular, "税率を説明し、満足度100%" must still be reviewed.
   const before = article.slice(Math.max(0, index - 100), index);
   const after = article.slice(index + 4);
-  // A guarantee is not a statutory description, even when a tax label precedes it.
-  const followingClause = after.split(/[、。，．！？!?\n]/, 1)[0];
-  if (/(?:保証|実現|達成|確実|成功)/.test(followingClause)) return false;
+  // A guarantee elsewhere in the same sentence can qualify this number, including
+  // before the tax label or after a comma. Ambiguous mixed sentences need review.
+  const sentenceBefore = article.slice(0, index).split(/[。．！？!?\n]/).at(-1) ?? '';
+  const sentenceAfter = after.split(/[。．！？!?\n]/, 1)[0];
+  if (/(?:保証|実現|達成|確実|成功|必ず|絶対)/.test(sentenceBefore + '100%' + sentenceAfter)) return false;
+  // Require a statutory-value ending as well as a tax label. A label followed by
+  // "100%の満足度" (or another marketing predicate) is not a statutory percentage.
+  if (!/^[ \t*_]*(?:$|[、。，．！？!?（）()\n]|未満|以下|以上|超|です|で(?:ある|も)|と(?:いう|する|なる)|の(?:区分|制度|株式|会社|適用))/.test(after)) return false;
   const spacing = '[ \\t*_]*';
   const label = '(?:持株割合|益金不算入(?:割合|率)?|税率|控除(?:割合|率)?)';
   const direct = new RegExp(`${label}${spacing}(?:は|が|を|:|：)?${spacing}(?:1/3超${spacing})?$`);

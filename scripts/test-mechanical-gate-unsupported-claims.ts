@@ -17,9 +17,9 @@ const cases: [string, number][] = [
   ['税率を確認します。満足度100%を保証。控除の要件は別途確認します。', 1],
   ['税率を説明し、満足度100%を保証します。', 1],
   ['満足度100%を保証し、税率も確認します。', 1],
-  ['控除率100%の制度があり、満足度100%を保証します。', 1],
-  ['完全子法人株式等（持株割合100%）は100%、当社の成功率100%です。', 1],
-  ['持株割合100%でも、当社なら100%成功します。', 1],
+  ['控除率100%の制度があり、満足度100%を保証します。', 2],
+  ['完全子法人株式等（持株割合100%）は100%、当社の成功率100%です。', 3],
+  ['持株割合100%でも、当社なら100%成功します。', 2],
   ['税率\n100%の満足度です。', 1],
   ['税率。100%の満足度です。', 1],
   ['控除を100%保証します。', 1],
@@ -27,7 +27,20 @@ const cases: [string, number][] = [
   ['控除率**100%**を保証します。', 1],
   ['控除率100%の適用を保証します。', 1],
   ['税率を確認！成功率100%です。', 1],
-  ['持株割合100%の会社でも満足度100%、成功率100%とは限りません。', 2],
+  ['持株割合100%の会社でも満足度100%、成功率100%とは限りません。', 3],
+  ['当社が保証する控除率100%。', 1],
+  ['確実に適用される控除率100%です。', 1],
+  ['控除率100%、これを保証します。', 1],
+  ['控除率100%、適用は確実です。', 1],
+  ['完全子法人株式等は100%の満足度です。', 1],
+  ['税率100%の満足度です。', 1],
+  ['税率**100%**の顧客満足度です。', 1],
+  ['完全子法人株式等は100%の信頼性です。', 1],
+  ['控除率100%の区分です。満足度100%を保証します。', 1],
+  ['満足度100%を保証します。控除率100%の区分です。', 1],
+  ['満足度100%を保証します！控除率100%の区分です。', 1],
+  ['控除率100%の区分です\n満足度100%を保証します。', 1],
+  ['控除率100%の区分です、益金不算入100%の制度です。', 0],
 ];
 
 const dir = mkdtempSync(resolve(tmpdir(), 'gate-3555-'));
@@ -51,7 +64,7 @@ try {
   const run = spawnSync(process.execPath, ['--import', 'tsx', resolve(root, 'scripts/mechanical-gate.ts'), dir], { cwd: root, encoding: 'utf8', timeout: 30_000 });
   if (run.error || ![0, 1].includes(run.status ?? -1)) throw new Error('CLI regression probe failed');
   const remaining = JSON.parse(run.stdout).violations.filter((v: { rule: string }) => v.rule === 'unsupported-claims');
-  if (remaining.length !== 2) throw new Error('Other unsupported claims were weakened');
+  if (remaining.length !== 3) throw new Error('Other unsupported claims were weakened');
   console.log(`PASS ${cases.length} percentage cases and sibling-rule regression`);
 } finally {
   rmSync(dir, { recursive: true, force: true });
