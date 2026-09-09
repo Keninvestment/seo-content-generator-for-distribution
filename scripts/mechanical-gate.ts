@@ -353,7 +353,6 @@ function checkUnsupportedClaims(article: string, violations: Violation[]): void 
   addPatternViolations(violations, article, 'unsupported-claims', 'major', [
     { pattern: /税務リスク(?:の|が)ない/g, message: '税務リスクがないとする保証表現です。' },
     { pattern: /必ず(?:節税|削減|通)/g, message: '効果または結果を保証する表現です。' },
-    { pattern: /100%/g, message: '100%とする絶対的な数値表現です。' },
     {
       pattern: /\d+%から\d+%(?:\*{1,3}|_{1,3})?(?:に|へ)/g,
       message: '根拠の確認が必要な割合改善の実績表現です。',
@@ -364,6 +363,35 @@ function checkUnsupportedClaims(article: string, violations: Violation[]): void 
     },
     { pattern: /業界初|日本一|No\.?1/g, message: '最上級または優位性を断定する表現です。' },
   ]);
+  for (const match of article.matchAll(/100%/g)) {
+    const index = match.index ?? 0;
+    if (isStatutoryPercentage(article, index)) continue;
+    violations.push({
+      rule: 'unsupported-claims',
+      severity: 'major',
+      evidence: contextEvidence(ARTICLE_FILE, article, index, match[0].length),
+      message: '100%とする絶対的な数値表現です。',
+    });
+  }
+}
+
+function isStatutoryPercentage(article: string, index: number): boolean {
+  // Bind the exemption to this number, not any tax word in the sentence.
+  // In particular, "税率を説明し、満足度100%" must still be reviewed.
+  const before = article.slice(Math.max(0, index - 100), index);
+  const after = article.slice(index + 4);
+  // A guarantee is not a statutory description, even when a tax label precedes it.
+  const followingClause = after.split(/[、。，．！？!?\n]/, 1)[0];
+  if (/(?:保証|実現|達成|確実|成功)/.test(followingClause)) return false;
+  const spacing = '[ \\t*_]*';
+  const label = '(?:持株割合|益金不算入(?:割合|率)?|税率|控除(?:割合|率)?)';
+  const direct = new RegExp(`${label}${spacing}(?:は|が|を|:|：)?${spacing}(?:1/3超${spacing})?$`);
+  if (direct.test(before)) return true;
+  // The statutory category can have its ownership percentage in parentheses.
+  // Do not allow arbitrary text between that category and the exempted number.
+  const category = new RegExp(`完全子法人株式等(?:[（(]持株割合${spacing}100%[）)])?${spacing}は${spacing}$`);
+  if (category.test(before)) return true;
+  return false;
 }
 
 function sentenceContaining(article: string, index: number): string {
