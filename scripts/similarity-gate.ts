@@ -118,13 +118,17 @@ const EXCLUDED_TAGS = new Set(['noscript', 'script', 'style', 'template', 'title
 
 function isHiddenElement(node: DefaultTreeAdapterTypes.Element): boolean {
   const attributes = new Map(node.attrs.map((attribute) => [attribute.name.toLowerCase(), attribute.value]));
-  if (attributes.has('hidden') || attributes.has('inert')) return true;
-  if (attributes.get('aria-hidden')?.trim().toLowerCase() === 'true') return true;
+  if (attributes.has('hidden')) return true;
   const style = attributes.get('style');
   if (!style) return false;
-  return /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|content-visibility\s*:\s*hidden)(?:\s*!important)?\s*(?:;|$)/iu.test(
-    style,
-  );
+  if (
+    /(?:^|;)\s*(?:display|visibility|content-visibility)\s*:/iu.test(style) ||
+    style.includes('\\') ||
+    style.includes('/*')
+  ) {
+    argumentError('published HTML contains unsupported inline visibility CSS');
+  }
+  return false;
 }
 
 function appendVisibleText(node: DefaultTreeAdapterTypes.Node, output: string[]): void {

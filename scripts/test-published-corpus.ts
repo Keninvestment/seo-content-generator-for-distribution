@@ -140,9 +140,6 @@ function hiddenDomSubtreesAreIgnored(): void {
   for (const hiddenMarkup of [
     `<div hidden>${hidden}</div>`,
     `<noscript>${hidden}</noscript>`,
-    `<div style="display: none !important">${hidden}</div>`,
-    `<div aria-hidden="true">${hidden}</div>`,
-    `<div inert>${hidden}</div>`,
   ]) {
     const result = run(`# 対象\n\n${shared}`, { body: `<p>${shared}</p>${hiddenMarkup}` });
     check(result.status === 1, `hidden DOM subtree must not evade similarity: ${result.stderr}`);
@@ -150,6 +147,33 @@ function hiddenDomSubtreesAreIgnored(): void {
     check(output.results[0].shingleSim === 1, `hidden DOM text contaminated shingles: ${output.results[0].shingleSim}`);
   }
   console.log('PASS hidden DOM subtrees are ignored');
+}
+
+function visuallyPresentSemanticAttributesAreIncluded(): void {
+  const shared = paragraph('属性があっても視覚表示される同一本文', 70);
+  for (const attribute of ['aria-hidden="true"', 'inert']) {
+    const result = run(`# 対象\n\n${shared}`, { body: `<p ${attribute}>${shared}</p>` });
+    check(result.status === 1, `visually present ${attribute} text must be compared: ${result.stderr}`);
+    const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
+    check(output.results[0].shingleSim === 1, `${attribute} removed visible shingles`);
+  }
+  console.log('PASS visually present semantic attributes are included');
+}
+
+function inlineVisibilityCssFailsClosed(): void {
+  const shared = paragraph('inline visibility CSSを含む本文', 70);
+  for (const style of [
+    'display:none',
+    'display:none;display:block',
+    'visibility:hidden',
+    'content-visibility:hidden',
+    'd\\69splay:none',
+  ]) {
+    const result = run(`# 対象\n\n${shared}`, { body: `<p style="${style}">${shared}</p>` });
+    check(result.status === 2, `inline visibility CSS must exit 2: ${style}`);
+    check(result.stderr.includes('unsupported inline visibility CSS'), 'visibility CSS error missing');
+  }
+  console.log('PASS inline visibility CSS fail-closed');
 }
 
 function literalLessThanRunIsBounded(): void {
@@ -293,6 +317,8 @@ try {
   nestedTemplateTextIsIgnored();
   templateScriptTextIsIgnored();
   hiddenDomSubtreesAreIgnored();
+  visuallyPresentSemanticAttributesAreIncluded();
+  inlineVisibilityCssFailsClosed();
   literalLessThanRunIsBounded();
   unrelatedPublishedArticlePasses();
   emptyPublishedInventoryFailsClosed();
