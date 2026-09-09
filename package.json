@@ -25,6 +25,7 @@
     "js-yaml": "^4.1.0",
     "kuromoji": "^0.1.2",
     "openai": "^5.20.0",
+    "parse5": "^8.0.0",
     "pdf-parse": "^1.1.1",
     "pdf-poppler": "^0.2.1",
     "pdfjs-dist": "^5.4.149",

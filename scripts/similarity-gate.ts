@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
+import { parseFragment, type DefaultTreeAdapterTypes } from 'parse5';
 
 interface Thresholds {
   heading: number;
@@ -108,134 +109,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function decodeHtmlEntities(value: string): string {
-  const named: Record<string, string> = {
-    amp: '&', apos: "'", gt: '>', lt: '<', nbsp: ' ', quot: '"',
-  };
-  return value.replace(/&(#(?:x[0-9a-f]+|[0-9]+)|[a-z]+);/giu, (match, entity: string) => {
-    if (entity[0] !== '#') return named[entity.toLowerCase()] ?? match;
-    const hexadecimal = entity[1]?.toLowerCase() === 'x';
-    const codePoint = Number.parseInt(entity.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
-    if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) return match;
-    try {
-      return String.fromCodePoint(codePoint);
-    } catch {
-      return match;
-    }
-  });
-}
+const BLOCK_TAGS = new Set([
+  'article', 'aside', 'blockquote', 'br', 'dd', 'div', 'dl', 'dt', 'figcaption', 'figure',
+  'footer', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'section', 'table', 'tbody',
+  'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
+]);
+const EXCLUDED_TAGS = new Set(['script', 'style', 'template', 'title']);
 
-function findRawClose(lowerHtml: string, tagName: string, from: number): number {
-  let searchFrom = from;
-  const prefix = `</${tagName}`;
-  while (searchFrom < lowerHtml.length) {
-    const candidate = lowerHtml.indexOf(prefix, searchFrom);
-    if (candidate < 0) return -1;
-    const boundary = lowerHtml[candidate + prefix.length];
-    if (boundary === '>' || boundary === undefined || /\s/u.test(boundary)) return candidate;
-    searchFrom = candidate + prefix.length;
+function appendVisibleText(node: DefaultTreeAdapterTypes.Node, output: string[]): void {
+  if ('value' in node) {
+    output.push(node.value);
+    return;
   }
-  return -1;
-}
-
-function findTagEnd(html: string, from: number): number {
-  let quote: '"' | "'" | null = null;
-  for (let index = from; index < html.length; index += 1) {
-    const character = html[index];
-    if (quote !== null) {
-      if (character === quote) quote = null;
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === '>') {
-      return index;
-    }
+  if (!('childNodes' in node)) return;
+  const tagName = 'tagName' in node ? node.tagName.toLowerCase() : undefined;
+  if (tagName && EXCLUDED_TAGS.has(tagName)) return;
+  if (tagName === 'h2' || tagName === 'h3') {
+    output.push(`\n${tagName === 'h2' ? '##' : '###'} `);
+  } else if (tagName && BLOCK_TAGS.has(tagName)) {
+    output.push('\n');
   }
-  return -1;
-}
-
-function skipNestedTemplate(html: string, from: number): number {
-  let depth = 1;
-  let index = from;
-  while (index < html.length) {
-    const tagStart = html.indexOf('<', index);
-    if (tagStart < 0) return html.length;
-    if (html.startsWith('<!--', tagStart)) {
-      const commentEnd = html.indexOf('-->', tagStart + 4);
-      if (commentEnd < 0) return html.length;
-      index = commentEnd + 3;
-      continue;
-    }
-    const tagEnd = findTagEnd(html, tagStart + 1);
-    if (tagEnd < 0) return html.length;
-    const match = html.slice(tagStart + 1, tagEnd).match(/^\s*(\/?)\s*template\b/iu);
-    if (match) {
-      depth += match[1] === '/' ? -1 : 1;
-      if (depth === 0) return tagEnd + 1;
-    }
-    index = tagEnd + 1;
+  for (const child of node.childNodes) appendVisibleText(child, output);
+  if ((tagName === 'h2' || tagName === 'h3') || (tagName && BLOCK_TAGS.has(tagName))) {
+    output.push('\n');
   }
-  return html.length;
 }
 
 function htmlToMarkdown(html: string): string {
-  const lowerHtml = html.toLowerCase();
+  const fragment = parseFragment(html);
   const output: string[] = [];
-  const blockTags = new Set([
-    'article', 'aside', 'blockquote', 'br', 'dd', 'div', 'dl', 'dt', 'figcaption', 'figure',
-    'footer', 'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'section', 'table', 'tbody',
-    'td', 'tfoot', 'th', 'thead', 'tr', 'ul',
-  ]);
-  const rawTags = new Set(['script', 'style', 'template']);
-  let index = 0;
-  while (index < html.length) {
-    if (html.startsWith('<!--', index)) {
-      const commentEnd = html.indexOf('-->', index + 4);
-      if (commentEnd < 0) break;
-      index = commentEnd + 3;
-      continue;
-    }
-    if (html[index] !== '<') {
-      const nextTag = html.indexOf('<', index);
-      const end = nextTag < 0 ? html.length : nextTag;
-      output.push(html.slice(index, end));
-      index = end;
-      continue;
-    }
-    const tagEnd = findTagEnd(html, index + 1);
-    if (tagEnd < 0) {
-      if (!/^<\s*(?:[a-z]|\/?[a-z]|!|\?)/iu.test(html.slice(index))) {
-        output.push(html.slice(index));
-      }
-      break;
-    }
-    const tagMatch = html.slice(index + 1, tagEnd).match(/^\s*(\/?)\s*([a-z][a-z0-9]*)\b/iu);
-    if (!tagMatch) {
-      output.push('<');
-      index += 1;
-      continue;
-    }
-    const closing = tagMatch[1] === '/';
-    const tagName = tagMatch[2].toLowerCase();
-    if (!closing && tagName === 'template') {
-      index = skipNestedTemplate(html, tagEnd + 1);
-      continue;
-    }
-    if (!closing && rawTags.has(tagName)) {
-      const closeStart = findRawClose(lowerHtml, tagName, tagEnd + 1);
-      if (closeStart < 0) break;
-      const closeEnd = findTagEnd(html, closeStart + tagName.length + 2);
-      index = closeEnd < 0 ? html.length : closeEnd + 1;
-      continue;
-    }
-    if (!closing && (tagName === 'h2' || tagName === 'h3')) {
-      output.push(`\n${tagName === 'h2' ? '##' : '###'} `);
-    } else if ((closing && (tagName === 'h2' || tagName === 'h3')) || blockTags.has(tagName)) {
-      output.push('\n');
-    }
-    // Inline tags intentionally add no separator: visible text adjacency must be preserved.
-    index = tagEnd + 1;
-  }
-  return decodeHtmlEntities(output.join(''))
+  appendVisibleText(fragment, output);
+  return output.join('')
     .replace(/[\t\f\v ]+/gu, ' ')
     .replace(/\s*\n\s*/gu, '\n')
     .replace(/\n{3,}/gu, '\n\n')

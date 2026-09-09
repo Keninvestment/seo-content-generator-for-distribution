@@ -100,7 +100,7 @@ function hiddenAttributeTextIsIgnored(): void {
 }
 
 function literalLessThanIsPreserved(): void {
-  const shared = paragraph('1 < 2を含む同一の公開本文');
+  const shared = paragraph('a < bと1 < 2を含む同一の公開本文');
   const result = run(`# 対象\n\n## 不等号の確認\n${shared}`, {
     body: `<h2>不等号の確認</h2><p>${shared}</p>`,
   });
@@ -120,6 +120,29 @@ function nestedTemplateTextIsIgnored(): void {
   const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
   check(output.results[0].shingleSim === 1, `nested template contaminated shingles: ${output.results[0].shingleSim}`);
   console.log('PASS nested template text is ignored');
+}
+
+function templateScriptTextIsIgnored(): void {
+  const shared = paragraph('template外にある同一の公開本文', 70);
+  const hidden = paragraph('script後のtemplate内部だけにある非表示文字列', 2_000);
+  const result = run(`# 対象\n\n${shared}`, {
+    body: `<p>${shared}</p><template><script>const x="</template>";</script>${hidden}</template>`,
+  });
+  check(result.status === 1, `script text must not terminate hidden template content: ${result.stderr}`);
+  const output = JSON.parse(result.stdout) as { results: { shingleSim: number }[] };
+  check(output.results[0].shingleSim === 1, `template script text contaminated shingles: ${output.results[0].shingleSim}`);
+  console.log('PASS template script raw text is ignored');
+}
+
+function literalLessThanRunIsBounded(): void {
+  const shared = paragraph('大量のliteral less-than後にある公開本文', 70);
+  const body = `${'<'.repeat(80_000)}><p>${shared}</p>`;
+  const startedAt = Date.now();
+  const result = run(`# 対象\n\n${'<'.repeat(80_000)}>${shared}`, { body });
+  const elapsed = Date.now() - startedAt;
+  check(result.status === 1, `literal less-than run must preserve similarity: ${result.stderr}`);
+  check(elapsed < 5000, `literal less-than normalization exceeded 5s: ${elapsed}ms`);
+  console.log(`PASS literal less-than run bounded (${elapsed}ms)`);
 }
 
 function unrelatedPublishedArticlePasses(): void {
@@ -250,6 +273,8 @@ try {
   hiddenAttributeTextIsIgnored();
   literalLessThanIsPreserved();
   nestedTemplateTextIsIgnored();
+  templateScriptTextIsIgnored();
+  literalLessThanRunIsBounded();
   unrelatedPublishedArticlePasses();
   emptyPublishedInventoryFailsClosed();
   missingBodyFailsClosed();
