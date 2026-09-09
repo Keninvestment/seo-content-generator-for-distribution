@@ -1,4 +1,5 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 
 interface Thresholds {
@@ -23,6 +24,7 @@ interface GateResult {
 interface ParsedArguments {
   target: string;
   corpus: string;
+  publishedInventory?: string;
   thresholds: Thresholds;
 }
 
@@ -36,8 +38,10 @@ const DEFAULT_SHINGLE_THRESHOLD = 0.25;
 const SHINGLE_SIZE = 5;
 const MIN_NON_ARTICLE_LENGTH = 500;
 const MAX_RESULTS = 10;
+const MAX_INVENTORY_BYTES = 20 * 1024 * 1024;
+const MAX_PUBLISHED_BODY_BYTES = 2 * 1024 * 1024;
 const USAGE =
-  'Usage: npx tsx scripts/similarity-gate.ts <target.md> --corpus <dir> [--threshold-heading 0.6] [--threshold-shingle 0.25]';
+  'Usage: npx tsx scripts/similarity-gate.ts <target.md> --corpus <dir> [--published-inventory <published_articles.json>] [--threshold-heading 0.6] [--threshold-shingle 0.25]';
 
 function argumentError(message: string): never {
   throw new Error(message);
@@ -57,6 +61,7 @@ function parseArguments(args: string[]): ParsedArguments {
   if (!target || target.startsWith('--')) argumentError('target.md is required');
 
   let corpus: string | undefined;
+  let publishedInventory: string | undefined;
   let headingThreshold = DEFAULT_HEADING_THRESHOLD;
   let shingleThreshold = DEFAULT_SHINGLE_THRESHOLD;
 
@@ -66,6 +71,12 @@ function parseArguments(args: string[]): ParsedArguments {
     if (option === '--corpus') {
       if (value === undefined || value.startsWith('--')) argumentError('--corpus requires a directory');
       corpus = value;
+      index += 1;
+    } else if (option === '--published-inventory') {
+      if (value === undefined || value.startsWith('--')) {
+        argumentError('--published-inventory requires a JSON file');
+      }
+      publishedInventory = value;
       index += 1;
     } else if (option === '--threshold-heading') {
       headingThreshold = parseThreshold(value, option);
@@ -82,8 +93,129 @@ function parseArguments(args: string[]): ParsedArguments {
   return {
     target: resolve(target),
     corpus: resolve(corpus),
+    publishedInventory: publishedInventory ? resolve(publishedInventory) : undefined,
     thresholds: { heading: headingThreshold, shingle: shingleThreshold },
   };
+}
+
+interface PublishedArticle {
+  identifier: string;
+  markdown: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function decodeHtmlEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: '&', apos: "'", gt: '>', lt: '<', nbsp: ' ', quot: '"',
+  };
+  return value.replace(/&(#(?:x[0-9a-f]+|[0-9]+)|[a-z]+);/giu, (match, entity: string) => {
+    if (entity[0] !== '#') return named[entity.toLowerCase()] ?? match;
+    const hexadecimal = entity[1]?.toLowerCase() === 'x';
+    const codePoint = Number.parseInt(entity.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+    if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) return match;
+    try {
+      return String.fromCodePoint(codePoint);
+    } catch {
+      return match;
+    }
+  });
+}
+
+function htmlToMarkdown(html: string): string {
+  const withoutUnsafeBlocks = html
+    .replace(/<!--[^]*?-->/gu, ' ')
+    .replace(/<(script|style|template)\b[^>]*>[^]*?<\/\1\s*>/giu, ' ');
+  const withHeadings = withoutUnsafeBlocks
+    .replace(/<h2\b[^>]*>([^]*?)<\/h2\s*>/giu, (_match, value: string) => `\n## ${value}\n`)
+    .replace(/<h3\b[^>]*>([^]*?)<\/h3\s*>/giu, (_match, value: string) => `\n### ${value}\n`)
+    .replace(/<\/?(?:p|div|section|article|li|ul|ol|blockquote|br|hr)\b[^>]*>/giu, '\n')
+    .replace(/<[^>]+>/gu, ' ');
+  return decodeHtmlEntities(withHeadings)
+    .replace(/[\t\f\v ]+/gu, ' ')
+    .replace(/\s*\n\s*/gu, '\n')
+    .replace(/\n{3,}/gu, '\n\n')
+    .trim();
+}
+
+function safePublishedUrl(value: unknown, field: string): URL {
+  if (typeof value !== 'string' || !value) argumentError(`${field} must be a non-empty URL`);
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    argumentError(`${field} must be a valid URL`);
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username !== '' ||
+    parsed.password !== '' ||
+    parsed.search !== '' ||
+    parsed.hash !== ''
+  ) {
+    argumentError(`${field} must be a public HTTPS URL without credentials, query, or fragment`);
+  }
+  return parsed;
+}
+
+async function loadPublishedArticles(path: string): Promise<PublishedArticle[]> {
+  const inventoryStat = await stat(path);
+  if (!inventoryStat.isFile() || inventoryStat.size > MAX_INVENTORY_BYTES) {
+    argumentError(`published inventory must be a file no larger than ${MAX_INVENTORY_BYTES} bytes`);
+  }
+  const raw = await readFile(path, 'utf8');
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    argumentError('published inventory must be valid JSON');
+  }
+  if (!isRecord(value) || value.schema_version !== 1 || !isRecord(value.source)) {
+    argumentError('published inventory requires schema_version=1 and source provenance');
+  }
+  const site = safePublishedUrl(value.source.site, 'source.site');
+  if (typeof value.synced_at !== 'string' || !Number.isFinite(Date.parse(value.synced_at))) {
+    argumentError('published inventory requires a valid synced_at');
+  }
+  if (!Array.isArray(value.posts)) argumentError('published inventory posts must be an array');
+
+  const seenIds = new Set<number>();
+  const seenLinks = new Set<string>();
+  const articles: PublishedArticle[] = [];
+  for (const [index, item] of value.posts.entries()) {
+    const prefix = `posts[${index}]`;
+    if (!isRecord(item) || !Number.isInteger(item.id) || (item.id as number) <= 0) {
+      argumentError(`${prefix}.id must be a positive integer`);
+    }
+    const id = item.id as number;
+    const link = safePublishedUrl(item.link, `${prefix}.link`);
+    if (link.origin !== site.origin) argumentError(`${prefix}.link must have the source.site origin`);
+    if (seenIds.has(id) || seenLinks.has(link.href)) {
+      argumentError(`${prefix} duplicates published provenance`);
+    }
+    seenIds.add(id);
+    seenLinks.add(link.href);
+    if (typeof item.modified !== 'string' || !Number.isFinite(Date.parse(item.modified))) {
+      argumentError(`${prefix}.modified must be a valid timestamp`);
+    }
+    if (typeof item.content_html !== 'string' || item.content_html.trim() === '') {
+      argumentError(`${prefix}.content_html must contain the published body`);
+    }
+    if (Buffer.byteLength(item.content_html, 'utf8') > MAX_PUBLISHED_BODY_BYTES) {
+      argumentError(`${prefix}.content_html exceeds ${MAX_PUBLISHED_BODY_BYTES} bytes`);
+    }
+    const digest = createHash('sha256').update(item.content_html, 'utf8').digest('hex');
+    if (typeof item.content_sha256 !== 'string' || item.content_sha256.toLowerCase() !== digest) {
+      argumentError(`${prefix}.content_sha256 does not match content_html`);
+    }
+    articles.push({
+      identifier: `published:${id}:${link.href}:sha256:${digest}`,
+      markdown: htmlToMarkdown(item.content_html),
+    });
+  }
+  return articles;
 }
 
 function isExcludedBasename(fileName: string): boolean {
@@ -264,6 +396,18 @@ async function runGate(arguments_: ParsedArguments): Promise<GateResult> {
       headingSim: headingSimilarity(targetFeatures.headings, features.headings),
       shingleSim: jaccard(targetFeatures.shingles, features.shingles),
     });
+  }
+
+  if (arguments_.publishedInventory) {
+    const publishedArticles = await loadPublishedArticles(arguments_.publishedInventory);
+    for (const article of publishedArticles) {
+      const features = articleFeatures(article.markdown);
+      results.push({
+        file: article.identifier,
+        headingSim: headingSimilarity(targetFeatures.headings, features.headings),
+        shingleSim: jaccard(targetFeatures.shingles, features.shingles),
+      });
+    }
   }
 
   results.sort(compareResults);

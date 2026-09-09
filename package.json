@@ -11,6 +11,8 @@
     "e2e:human-gate": "NODE_OPTIONS=--preserve-symlinks tsx scripts/e2e-seo-article-human-gate.ts",
     "e2e:batch-reflection": "NODE_OPTIONS=--preserve-symlinks tsx scripts/e2e-batch-articles-reflection.ts",
     "test:banned-gate": "tsx scripts/test-banned-words-gate.ts",
+    "test:similarity-gate": "tsx scripts/test-similarity-gate.ts && tsx scripts/test-published-corpus.ts",
+    "test:article-type-gate": "tsx scripts/test-article-type-gate.ts",
     "start": "npm run server & npm run dev"
   },
   "dependencies": {
@@ -34,6 +36,7 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.0.0",
