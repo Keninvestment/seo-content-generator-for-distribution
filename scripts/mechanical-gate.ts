@@ -384,10 +384,19 @@ function isStatutoryPercentage(article: string, index: number): boolean {
   // before the tax label or after a comma. Ambiguous mixed sentences need review.
   const sentenceBefore = article.slice(0, index).split(/[。．！？!?\n]/).at(-1) ?? '';
   const sentenceAfter = after.split(/[。．！？!?\n]/, 1)[0];
-  if (/(?:保証|実現|達成|確実|成功|必ず|絶対)/.test(sentenceBefore + '100%' + sentenceAfter)) return false;
-  // Require a statutory-value ending as well as a tax label. A label followed by
-  // "100%の満足度" (or another marketing predicate) is not a statutory percentage.
-  if (!/^[ \t*_]*(?:$|[、。，．！？!?（）()\n]|未満|以下|以上|超|です|で(?:ある|も)|と(?:いう|する|なる)|の(?:区分|制度|株式|会社|適用))/.test(after)) return false;
+  if (/(?:保証|約束|実現|達成|確実|成功|必ず|絶対|満足度|実績|信頼性)/.test(sentenceBefore + '100%' + sentenceAfter)) return false;
+  // Match the complete following clause, never a prefix such as "という" or
+  // "の適用" that could introduce an arbitrary marketing claim. These are
+  // deliberately limited descriptive endings; unfamiliar prose stays reviewable.
+  const ending = after.split(/[、。，．！？!?\n]/, 1)[0].replace(/[ \t*_]/g, '');
+  const statutoryEndings = [
+    /^(?:未満|以下|以上|超)?[）)]?(?:です|である|とする|となる|となります|とされます|とされています|と定められています)?$/,
+    /^(?:未満|以下|以上|超)?[）)]は(?:100%|区分が異なります)$/,
+    /^の(?:区分|制度|株式|会社)(?:です|である|があり|があります|は根拠条文を確認します|は適用要件を確認します)?$/,
+    /^という(?:記載|規定|区分)(?:は|です|があります|を確認します)?$/,
+    /^の適用(?:要件)?(?:は根拠条文を確認します|を確認します|について説明します)$/,
+  ];
+  if (!statutoryEndings.some(pattern => pattern.test(ending))) return false;
   const spacing = '[ \\t*_]*';
   const label = '(?:持株割合|益金不算入(?:割合|率)?|税率|控除(?:割合|率)?)';
   const direct = new RegExp(`${label}${spacing}(?:は|が|を|:|：)?${spacing}(?:1/3超${spacing})?$`);
