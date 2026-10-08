@@ -32,6 +32,13 @@ interface GateResult {
   source: { path: string; sha256: string; basis: string };
   consecutiveCount: number;
   maxConsecutive: number;
+  legacySkipped: number;
+}
+
+interface HistoricalRecords {
+  records: MetaRecord[];
+  legacySlugs: Set<string>;
+  legacySkipped: number;
 }
 
 function fail(message: string): never {
@@ -138,14 +145,21 @@ async function collectMetaFiles(directory: string): Promise<string[]> {
   return result;
 }
 
-async function historicalRecords(history: string, targetPath: string): Promise<MetaRecord[]> {
+async function historicalRecords(history: string, targetPath: string): Promise<HistoricalRecords> {
   const records: MetaRecord[] = [];
+  const legacySlugs = new Set<string>();
+  let legacySkipped = 0;
   const slugs = new Set<string>();
   const timestamps = new Set<number>();
   for (const path of await collectMetaFiles(history)) {
     if (path === targetPath) continue;
     const raw = await readBounded(path, MAX_META_BYTES, `history meta ${path}`);
     const meta = parseYamlRecord(raw.text, `history meta ${path}`);
+    if (!Object.prototype.hasOwnProperty.call(meta, 'article_type_source')) {
+      legacySkipped += 1;
+      if (typeof meta.slug === 'string' && meta.slug.trim() !== '') legacySlugs.add(meta.slug.trim());
+      continue;
+    }
     const articleType = requiredString(meta.article_type, `${path}: article_type`);
     if (!ALLOWED_ARTICLE_TYPES.includes(articleType as (typeof ALLOWED_ARTICLE_TYPES)[number])) {
       fail(`${path}: article_type is not allowed`);
@@ -159,7 +173,8 @@ async function historicalRecords(history: string, targetPath: string): Promise<M
     timestamps.add(createdAt);
     records.push({ path, slug, createdAt, articleType });
   }
-  return records.sort((left, right) => left.createdAt - right.createdAt || left.path.localeCompare(right.path));
+  records.sort((left, right) => left.createdAt - right.createdAt || left.path.localeCompare(right.path));
+  return { records, legacySlugs, legacySkipped };
 }
 
 async function runGate(args: ParsedArguments): Promise<GateResult> {
@@ -190,7 +205,8 @@ async function runGate(args: ParsedArguments): Promise<GateResult> {
   const actualDigest = createHash('sha256').update(sourceRaw.bytes).digest('hex');
   if (actualDigest !== sourceDigest) fail('article_type_source.sha256 does not match --source');
 
-  const records = await historicalRecords(args.history, args.meta);
+  const { records, legacySlugs, legacySkipped } = await historicalRecords(args.history, args.meta);
+  if (legacySlugs.has(slug)) fail('target duplicates history slug or created_at provenance');
   if (records.some((record) => record.slug === slug || record.createdAt === createdAt)) {
     fail('target duplicates history slug or created_at provenance');
   }
@@ -212,6 +228,7 @@ async function runGate(args: ParsedArguments): Promise<GateResult> {
     source: { path: relative(dirname(args.meta), args.source), sha256: actualDigest, basis },
     consecutiveCount,
     maxConsecutive: args.maxConsecutive,
+    legacySkipped,
   };
 }
 
