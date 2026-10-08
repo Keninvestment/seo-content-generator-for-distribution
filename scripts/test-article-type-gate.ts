@@ -15,6 +15,7 @@ function check(condition: unknown, message: string): asserts condition {
 interface RunOptions {
   target?: Record<string, unknown>;
   history?: Record<string, unknown>[];
+  rawHistory?: string[];
   source?: string;
   sourceBytes?: Buffer;
   maxConsecutive?: number;
@@ -50,6 +51,11 @@ function run(options: RunOptions = {}) {
     mkdirSync(itemDirectory);
     writeFileSync(resolve(itemDirectory, 'meta.yaml'), yaml.dump(item), 'utf8');
   }
+  for (const [index, item] of (options.rawHistory ?? []).entries()) {
+    const itemDirectory = resolve(historyDirectory, `raw-${index}`);
+    mkdirSync(itemDirectory);
+    writeFileSync(resolve(itemDirectory, 'meta.yaml'), item, 'utf8');
+  }
   if (options.orphanHistoryArticle) {
     const orphanDirectory = resolve(historyDirectory, 'orphan');
     mkdirSync(orphanDirectory);
@@ -72,14 +78,21 @@ function run(options: RunOptions = {}) {
 }
 
 function history(slug: string, createdAt: string, articleType: string): Record<string, unknown> {
-  return { slug, created_at: createdAt, article_type: articleType };
+  return { slug, created_at: createdAt, article_type: articleType, article_type_source: {} };
+}
+
+function legacyHistory(slug: string, createdAt: string, articleType?: string): Record<string, unknown> {
+  return { slug, created_at: createdAt, ...(articleType === undefined ? {} : { article_type: articleType }) };
 }
 
 function validSourceAndDiversityPass(): void {
   const result = run({ history: [history('one', '2026-09-07T10:00:00+09:00', '解説型')] });
   check(result.status === 0, `valid metadata must pass: ${result.stderr}`);
-  const output = JSON.parse(result.stdout) as { verdict: string; consecutiveCount: number };
-  check(output.verdict === 'pass' && output.consecutiveCount === 1, 'valid output is incorrect');
+  const output = JSON.parse(result.stdout) as { verdict: string; consecutiveCount: number; legacySkipped: number };
+  check(
+    output.verdict === 'pass' && output.consecutiveCount === 1 && output.legacySkipped === 0,
+    'valid output is incorrect',
+  );
   console.log('PASS source-enforced metadata');
 }
 
@@ -162,10 +175,69 @@ function invalidUtf8SourceFailsClosed(): void {
   console.log('PASS strict UTF-8 source');
 }
 
-function incompleteHistoryFailsClosed(): void {
-  const result = run({ history: [{ slug: 'one', created_at: '2026-09-08T10:00:00+09:00' }] });
-  check(result.status === 2 && result.stderr.includes('article_type is required'), 'incomplete history must fail');
-  console.log('PASS incomplete history fail-closed');
+function legacyHistoryIsSkipped(): void {
+  const result = run({
+    history: [
+      legacyHistory('legacy-one', '2026-07-15T12:20:00+09:00', '解説型'),
+      legacyHistory('legacy-two', '2026-07-15T12:20:00+09:00'),
+      legacyHistory('legacy-three', '2026-10-08T12:20:00+09:00', '手順型'),
+    ],
+  });
+  check(result.status === 0, `legacy history must be skipped: ${result.stderr}`);
+  const output = JSON.parse(result.stdout) as { legacySkipped: number };
+  check(output.legacySkipped === 3, 'legacySkipped must equal the skipped legacy meta count');
+  console.log('PASS legacy history skip and count');
+}
+
+function incompleteGatedHistoryFailsClosed(): void {
+  const result = run({
+    history: [{ slug: 'one', created_at: '2026-09-08T10:00:00+09:00', article_type_source: {} }],
+  });
+  check(result.status === 2 && result.stderr.includes('article_type is required'), 'incomplete gated history must fail');
+  console.log('PASS incomplete gated history fail-closed');
+}
+
+function duplicateGatedCreatedAtFails(): void {
+  const result = run({
+    history: [
+      history('one', '2026-09-07T10:00:00+09:00', '解説型'),
+      history('two', '2026-09-07T10:00:00+09:00', '手順型'),
+    ],
+  });
+  check(result.status === 2 && result.stderr.includes('duplicate slug or created_at'), 'duplicate gated created_at must fail');
+  console.log('PASS duplicate gated created_at fail-closed');
+}
+
+function targetLegacySlugFails(): void {
+  const result = run({ history: [legacyHistory('target', '2026-07-15T12:20:00+09:00')] });
+  check(result.status === 2 && result.stderr.includes('target duplicates history slug'), 'legacy slug duplicate must fail');
+  console.log('PASS target duplicate legacy slug fail-closed');
+}
+
+function invalidLegacyYamlFails(): void {
+  const result = run({ rawHistory: ['slug: [\n'] });
+  check(result.status === 2 && result.stderr.includes('must be valid YAML'), 'invalid legacy YAML must fail');
+  console.log('PASS invalid legacy YAML fail-closed');
+}
+
+function consecutiveTypeUsesOnlyGatedRecords(): void {
+  const source = '# 根拠\n\n[E1] 検索意図と制度上の論点を記録。\n';
+  const result = run({
+    target: {
+      slug: 'target', created_at: '2026-09-09T10:00:00+09:00', article_type: '手順型',
+      article_type_source: {
+        path: 'evidence_pack.md', sha256: createHash('sha256').update(source, 'utf8').digest('hex'),
+        basis: 'both', rationale: '手順を求める検索意図と根拠に基づく。',
+      },
+    },
+    history: [
+      history('gated-one', '2026-07-10T10:00:00+09:00', '手順型'),
+      history('gated-two', '2026-07-11T10:00:00+09:00', '手順型'),
+      legacyHistory('legacy-newer', '2026-09-08T10:00:00+09:00', '解説型'),
+    ],
+  });
+  check(result.status === 2 && result.stderr.includes('exceed max consecutive'), 'legacy records must not break gated consecutive history');
+  console.log('PASS consecutive cap uses gated history only');
 }
 
 function missingHistoryMetaFailsClosed(): void {
@@ -202,7 +274,12 @@ try {
   differentTypeAvoidsOverDetection();
   backdatedTargetFailsClosed();
   invalidUtf8SourceFailsClosed();
-  incompleteHistoryFailsClosed();
+  legacyHistoryIsSkipped();
+  incompleteGatedHistoryFailsClosed();
+  duplicateGatedCreatedAtFails();
+  targetLegacySlugFails();
+  invalidLegacyYamlFails();
+  consecutiveTypeUsesOnlyGatedRecords();
   missingHistoryMetaFailsClosed();
   duplicateHistoryProvenanceFails();
   oversizedSourceFailsClosed();
